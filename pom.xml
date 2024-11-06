@@ -9,9 +9,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.neodymium</groupId>
-    <artifactId>customDb</artifactId>
+    <artifactId>customdb</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>customDb</name>
+    <name>customdb</name>
     <description>customDb</description>
     <url/>
     <licenses>
@@ -130,6 +130,15 @@
                             <port>80</port>
                         </ports>
                     </container>
+                    <extraDirectories>
+                        <paths>
+                            <!-- Copy all files from /input on the host into /input in the container -->
+                            <path>
+                                <from>${project.basedir}/input</from>
+                                <into>/input</into>
+                            </path>
+                        </paths>
+                    </extraDirectories>
                 </configuration>
             </plugin>
         </plugins>
