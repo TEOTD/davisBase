@@ -52,7 +52,7 @@ public class ConverterService {
                 fileProperties.getRecordSize(),
                 outputFilePath.toString(),
                 pages);
-        
+
         employeeTable.init();
         employeeTable.saveToFile();
     }
@@ -68,11 +68,11 @@ public class ConverterService {
         char minit = Optional.ofNullable(recordMap.get("Minit"))
                 .filter(s -> !s.isEmpty())
                 .map(s -> s.charAt(0))
-                .orElse(' ');
+                .orElse('\0');
         String lname = recordMap.get("Lname");
         String bdate = recordMap.get("Bdate");
         String address = recordMap.get("Address");
-        char sex = Optional.ofNullable(recordMap.get("Sex")).map(s -> s.charAt(0)).orElse(' ');
+        char sex = Optional.ofNullable(recordMap.get("Sex")).map(s -> s.charAt(0)).orElse('\0');
         int salary = Integer.parseInt(recordMap.getOrDefault("Salary", "0"));
         short dno = Short.parseShort(recordMap.getOrDefault("Dno", "0"));
         return new Employee(rowId, ssn, fname, minit, lname, bdate, address, sex, salary, dno, (byte) 0);
