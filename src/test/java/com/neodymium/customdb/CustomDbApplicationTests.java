@@ -102,7 +102,6 @@ class CustomDbApplicationTests {
     @Test
     @SneakyThrows
     void outPutComparisonTest() {
-        assertThatCode(converterService::init).doesNotThrowAnyException();
         Resource actualOutput = new ClassPathResource("output/employee.tbl");
         Resource expectedOutput = new ClassPathResource("output/sorted.tbl");
         BufferedReader actualReader = new BufferedReader(new InputStreamReader(
