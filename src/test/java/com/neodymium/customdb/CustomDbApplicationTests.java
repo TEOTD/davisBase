@@ -18,11 +18,15 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -93,5 +97,41 @@ class CustomDbApplicationTests {
         String inputFilePath = "input/employee.csv";
         String outputFilePath = "output/employee.tbl";
         assertThatCode(() -> converterService.init(inputFilePath, outputFilePath)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @SneakyThrows
+    void outPutComparisonTest() {
+        assertThatCode(converterService::init).doesNotThrowAnyException();
+        Resource actualOutput = new ClassPathResource("output/employee.tbl");
+        Resource expectedOutput = new ClassPathResource("output/sorted.tbl");
+        BufferedReader actualReader = new BufferedReader(new InputStreamReader(
+                Objects.requireNonNull(actualOutput.getInputStream()), StandardCharsets.UTF_8));
+        BufferedReader expectedReader = new BufferedReader(new InputStreamReader(
+                Objects.requireNonNull(expectedOutput.getInputStream()), StandardCharsets.UTF_8));
+        String actualLine;
+        String expectedLine;
+        int lineNumber = 1;
+        while ((actualLine = actualReader.readLine()) != null && (expectedLine = expectedReader.readLine()) != null) {
+            byte[] actualBytes = actualLine.getBytes(StandardCharsets.UTF_8);
+            byte[] expectedBytes = expectedLine.getBytes(StandardCharsets.UTF_8);
+            assertThat(actualBytes.length)
+                    .withFailMessage("Line %d: Length mismatch - expected %d but got %d",
+                            lineNumber, expectedBytes.length, actualBytes.length)
+                    .isEqualTo(expectedBytes.length);
+            for (int i = 0; i < actualBytes.length; i++) {
+                assertThat(actualBytes[i])
+                        .withFailMessage("Line %d, Byte %d: Expected %d but got %d",
+                                lineNumber, i, expectedBytes[i], actualBytes[i])
+                        .isEqualTo(expectedBytes[i]);
+            }
+            lineNumber++;
+        }
+        assertThat(actualReader.readLine())
+                .withFailMessage("Actual output has more lines than expected")
+                .isNull();
+        assertThat(expectedReader.readLine())
+                .withFailMessage("Expected output has more lines than actual")
+                .isNull();
     }
 }
