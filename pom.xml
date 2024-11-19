@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.neodymium</groupId>
-    <artifactId>customdb</artifactId>
+    <artifactId>davisBase</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>customdb</name>
-    <description>customDb</description>
+    <name>davisBase</name>
+    <description>A custom database created for CS6360</description>
     <url/>
     <licenses>
         <license/>
