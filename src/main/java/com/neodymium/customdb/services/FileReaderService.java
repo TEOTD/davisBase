@@ -1,6 +1,6 @@
 package com.neodymium.customdb.services;
 
-import com.neodymium.customdb.error.CustomDbException;
+import com.neodymium.customdb.error.DavisBaseException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,7 +29,7 @@ public class FileReaderService {
             }
         } catch (IOException e) {
             log.error("Error while reading file at {}: {}", filePath, e.getMessage());
-            throw new CustomDbException("Error while reading file: " + e.getMessage());
+            throw new DavisBaseException("Error while reading file: " + e.getMessage());
         }
 
         return Collections.unmodifiableMap(result);

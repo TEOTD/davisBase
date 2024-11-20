@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class CustomDbApplication {
+public class DavisBaseApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(CustomDbApplication.class, args);
+        SpringApplication.run(DavisBaseApplication.class, args);
     }
 
 }

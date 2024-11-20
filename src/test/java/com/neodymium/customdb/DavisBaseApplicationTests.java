@@ -1,7 +1,7 @@
 package com.neodymium.customdb;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.neodymium.customdb.error.CustomDbException;
+import com.neodymium.customdb.error.DavisBaseException;
 import com.neodymium.customdb.services.ConverterService;
 import com.neodymium.customdb.services.CsvService;
 import com.neodymium.customdb.services.FileReaderService;
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest
 @ActiveProfiles("test")
 @RequiredArgsConstructor(onConstructor_ = {@Autowired})
-class CustomDbApplicationTests {
+class DavisBaseApplicationTests {
 
     @InjectMocks
     private final FileReaderService fileReaderService;
@@ -63,7 +63,7 @@ class CustomDbApplicationTests {
         try (MockedStatic<Files> mockedFiles = Mockito.mockStatic(Files.class)) {
             mockedFiles.when(() -> Files.newBufferedReader(Path.of(filePath)))
                     .thenThrow(new IOException("Mocked IO Exception"));
-            assertThrows(CustomDbException.class, () -> fileReaderService.readFile(filePath));
+            assertThrows(DavisBaseException.class, () -> fileReaderService.readFile(filePath));
         }
     }
 
@@ -84,7 +84,7 @@ class CustomDbApplicationTests {
     void parseEmptyCsvTest() {
         Resource resource = new ClassPathResource("input/emptyEmployee.csv");
         String filePath = resource.getFile().getPath();
-        assertThrows(CustomDbException.class, () -> csvService.parseCsv(filePath));
+        assertThrows(DavisBaseException.class, () -> csvService.parseCsv(filePath));
     }
 
     @Test

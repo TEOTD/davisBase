@@ -1,6 +1,6 @@
 package com.neodymium.customdb.services;
 
-import com.neodymium.customdb.error.CustomDbException;
+import com.neodymium.customdb.error.DavisBaseException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,7 +33,7 @@ public class CsvService {
 
         if (fileContents.isEmpty()) {
             log.error("CSV file content is empty");
-            throw new CustomDbException("CSV file content is empty");
+            throw new DavisBaseException("CSV file content is empty");
         }
 
         String[] headers = fileContents.get(0).split(",");

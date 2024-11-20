@@ -1,6 +1,6 @@
 package com.neodymium.customdb.models;
 
-import com.neodymium.customdb.error.CustomDbException;
+import com.neodymium.customdb.error.DavisBaseException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
@@ -23,7 +23,7 @@ public record Page<T extends TableRecord>(List<T> tableRecords) {
 
             if (recordEndOffset < 0) {
                 log.error("Page full during record addition");
-                throw new CustomDbException("Page full");
+                throw new DavisBaseException("Page full");
             }
 
             buffer.position(recordEndOffset);

@@ -1,6 +1,6 @@
 package com.neodymium.customdb.models;
 
-import com.neodymium.customdb.error.CustomDbException;
+import com.neodymium.customdb.error.DavisBaseException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -18,7 +18,7 @@ public record Table<T extends TableRecord>(int numPages, int pageSize, int recor
         File parentDir = file.getParentFile();
         if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
             log.error("Failed to create parent directories for file: {}", filePath);
-            throw new CustomDbException("Failed to create parent directories for file: " + filePath);
+            throw new DavisBaseException("Failed to create parent directories for file: " + filePath);
         }
 
         if (!file.exists()) {
@@ -29,7 +29,7 @@ public record Table<T extends TableRecord>(int numPages, int pageSize, int recor
                 }
             } catch (IOException e) {
                 log.error("Error while initializing file: ", e);
-                throw new CustomDbException("Error while initializing file: " + e.getMessage());
+                throw new DavisBaseException("Error while initializing file: " + e.getMessage());
             }
         }
     }
@@ -45,7 +45,7 @@ public record Table<T extends TableRecord>(int numPages, int pageSize, int recor
             }
         } catch (IOException e) {
             log.error("Error while saving to file: ", e);
-            throw new CustomDbException("Error while saving to file: " + e.getMessage());
+            throw new DavisBaseException("Error while saving to file: " + e.getMessage());
         }
     }
 }
