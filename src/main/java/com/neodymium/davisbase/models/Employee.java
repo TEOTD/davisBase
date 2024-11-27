@@ -1,4 +1,4 @@
-package com.neodymium.customdb.models;
+package com.neodymium.davisbase.models;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

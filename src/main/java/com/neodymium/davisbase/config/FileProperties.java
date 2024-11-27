@@ -1,4 +1,4 @@
-package com.neodymium.customdb.config;
+package com.neodymium.davisbase.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

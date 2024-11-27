@@ -1,6 +1,6 @@
-package com.neodymium.customdb.services;
+package com.neodymium.davisbase.services;
 
-import com.neodymium.customdb.error.DavisBaseException;
+import com.neodymium.davisbase.error.DavisBaseException;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

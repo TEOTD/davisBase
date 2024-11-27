@@ -1,4 +1,4 @@
-package com.neodymium.customdb;
+package com.neodymium.davisbase;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

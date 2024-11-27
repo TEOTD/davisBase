@@ -1,6 +1,6 @@
-package com.neodymium.customdb.models;
+package com.neodymium.davisbase.models;
 
-import com.neodymium.customdb.error.DavisBaseException;
+import com.neodymium.davisbase.error.DavisBaseException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -35,7 +35,7 @@ public record Table<T extends TableRecord>(int numPages, int pageSize, int recor
     }
 
 
-    public void saveToFile() {
+    public void save() {
         try (RandomAccessFile randomAccessFile = new RandomAccessFile(filePath, "rw")) {
             for (Map.Entry<Integer, Page<T>> entry : pages.entrySet()) {
                 int pageNum = entry.getKey();
@@ -48,4 +48,6 @@ public record Table<T extends TableRecord>(int numPages, int pageSize, int recor
             throw new DavisBaseException("Error while saving to file: " + e.getMessage());
         }
     }
+
+    //todo:modify to store things as bplus tree
 }

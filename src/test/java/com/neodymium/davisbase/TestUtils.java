@@ -1,4 +1,4 @@
-package com.neodymium.customdb;
+package com.neodymium.davisbase;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

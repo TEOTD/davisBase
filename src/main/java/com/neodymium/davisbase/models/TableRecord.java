@@ -1,4 +1,4 @@
-package com.neodymium.customdb.models;
+package com.neodymium.davisbase.models;
 
 public interface TableRecord {
     byte[] toByteArray(int recordSize);

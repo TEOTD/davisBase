@@ -1,6 +1,6 @@
-package com.neodymium.customdb.models;
+package com.neodymium.davisbase.models;
 
-import com.neodymium.customdb.error.DavisBaseException;
+import com.neodymium.davisbase.error.DavisBaseException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
