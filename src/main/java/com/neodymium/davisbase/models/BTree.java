@@ -1,4 +1,4 @@
 package com.neodymium.davisbase.models;
 
-public record Btree() {
+public record BTree() {
 }
