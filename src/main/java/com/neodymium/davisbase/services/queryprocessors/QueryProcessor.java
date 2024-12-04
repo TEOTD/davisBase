@@ -15,13 +15,74 @@ public class QueryProcessor {
     public final TCLProcessor tclProcessor;
     public final VDLProcessor vdlProcessor;
 
+    public QueryProcessor() {
+        this.ddlProcessor = new DDLProcessor();
+        this.dmlProcessor = new DMLProcessor();
+        this.dqlProcessor = new DQLProcessor();
+        this.tclProcessor = new TCLProcessor();
+        this.vdlProcessor = new VDLProcessor();
+    }
+
     public void process(String command) {
-        //todo: make generic function to process the command
-        //todo: breakdown the command and then use switch case to call different processors.
+        // Trim and sanitize the command
+        command = command.trim();
+
+        // Check for termination command
+        if (isTerminationCommand(command)) {
+            System.out.println("Exiting the system.");
+            System.exit(0);
+        }
+
+        // Determine the type of command and delegate to the appropriate processor
+        String commandType = getCommandType(command);
+
+        try {
+            switch (commandType) {
+                case "DDL":
+                    ddlProcessor.processDDL(command);
+                    break;
+                case "DML":
+                    dmlProcessor.processDML(command);
+                    break;
+                case "DQL":
+                    dqlProcessor.processDQL(command);
+                    break;
+                case "TCL":
+                    tclProcessor.processTCL(command);
+                    break;
+                case "VDL":
+                    vdlProcessor.processVDL(command);
+                    break;
+                default:
+                    System.out.println("Unknown command type: " + command);
+                    break;
+            }
+        } catch (Exception e) {
+            System.out.println("Error processing command: " + e.getMessage());
+        }
     }
 
     public boolean isTerminationCommand(String command) {
-        //todo: make termination function
-        return false;
+        // Check for standard termination commands like EXIT or QUIT
+        return command.equalsIgnoreCase("EXIT;") || command.equalsIgnoreCase("QUIT;");
+    }
+
+    private String getCommandType(String command) {
+        // Analyze the command and return its type
+        command = command.toUpperCase();
+
+        if (command.startsWith("CREATE") || command.startsWith("DROP") || command.startsWith("ALTER")) {
+            return "DDL";
+        } else if (command.startsWith("INSERT") || command.startsWith("UPDATE") || command.startsWith("DELETE")) {
+            return "DML";
+        } else if (command.startsWith("SELECT")) {
+            return "DQL";
+        } else if (command.startsWith("BEGIN") || command.startsWith("COMMIT") || command.startsWith("ROLLBACK")) {
+            return "TCL";
+        } else if (command.startsWith("GRANT") || command.startsWith("REVOKE")) {
+            return "VDL";
+        } else {
+            return "UNKNOWN";
+        }
     }
 }
