@@ -1,9 +1,11 @@
 package com.neodymium.davisbase.models;
 
-public interface TableRecord<T> {
+public interface TableRecord {
     byte[] serialize();
 
     String getPrimaryKey();
 
-    T deserialize(byte[] data);
+    int rowId();
+
+    int getSize();
 }

@@ -1,6 +1,8 @@
 package com.neodymium.davisbase.models;
 
 import com.neodymium.davisbase.error.DavisBaseException;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
@@ -10,19 +12,23 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
+@Getter
+@Setter
 public class Page<T extends TableRecord> {
     private final int pageSize;
+    private final int pageNumber;
     private final List<Short> cellOffsets;
     private final List<T> tableRecords;
     private final byte pageType;
     private final short rootPage;
-    private final short parentPage;
-    private final short siblingPage;
+    private short parentPage;
+    private short siblingPage;
     private short numberOfCells;
     private short contentAreaStartCell;
 
-    public Page(int pageSize, byte pageType, short rootPage, short parentPage, short siblingPage) {
+    public Page(int pageSize, int pageNumber, byte pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageSize = pageSize;
+        this.pageNumber = pageNumber;
         this.pageType = pageType;
         this.numberOfCells = 0;
         this.contentAreaStartCell = (short) pageSize;
@@ -33,11 +39,11 @@ public class Page<T extends TableRecord> {
         this.tableRecords = new ArrayList<>();
     }
 
-    public static <T extends TableRecord> Page<T> create(int pageSize, byte pageType, short rootPage, short parentPage, short siblingPage) {
-        return new Page<>(pageSize, pageType, rootPage, parentPage, siblingPage);
+    public static <T extends TableRecord> Page<T> create(int pageSize, int pageNumber, byte pageType, short rootPage, short parentPage, short siblingPage) {
+        return new Page<>(pageSize, pageNumber, pageType, rootPage, parentPage, siblingPage);
     }
 
-    public static <T extends TableRecord> Page<T> deserialize(byte[] data, TableRecord<T> factory) {
+    public static <T extends TableRecord> Page<T> deserialize(byte[] data, int pageNumber, TableRecordFactory<T> factory) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(data);
             byte pageType = buffer.get();
@@ -61,13 +67,7 @@ public class Page<T extends TableRecord> {
                 tableRecords.add(tableRecord);
             }
 
-            Page<T> page = new Page<>(
-                    data.length,
-                    pageType,
-                    rootPage,
-                    parentPage,
-                    siblingPage
-            );
+            Page<T> page = new Page<>(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
             page.numberOfCells = numberOfCells;
             page.contentAreaStartCell = contentAreaStartCell;
             page.cellOffsets.addAll(cellOffsets);
@@ -84,7 +84,7 @@ public class Page<T extends TableRecord> {
             byte[] serializedRecord = tableRecord.serialize();
             contentAreaStartCell -= (short) serializedRecord.length;
 
-            if (contentAreaStartCell < (16 + (2 * (numberOfCells + 1)))) {
+            if (!hasEnoughSpaceForRecords()) {
                 throw new DavisBaseException("Page full - not enough space for all records.");
             }
 
@@ -107,7 +107,7 @@ public class Page<T extends TableRecord> {
             byte[] serializedRecord = recordToInsert.serialize();
             newContentAreaStart -= (short) serializedRecord.length;
 
-            if (newContentAreaStart < (16 + 2 * (newCellOffsets.size() + 1))) {
+            if (!hasEnoughSpaceForUpdatedRecords(newContentAreaStart, newCellOffsets)) {
                 throw new DavisBaseException("Page full - not enough space for updated records.");
             }
 
@@ -125,15 +125,7 @@ public class Page<T extends TableRecord> {
     }
 
     public void delete(List<String> primaryKeys) {
-        List<T> toRemove = new ArrayList<>();
-        for (String primaryKey : primaryKeys) {
-            tableRecords.stream()
-                    .filter(tableRecord -> tableRecord.getPrimaryKey().equals(primaryKey))
-                    .findFirst()
-                    .ifPresent(toRemove::add);
-        }
-
-        tableRecords.removeAll(toRemove);
+        tableRecords.removeIf(tableRecord -> primaryKeys.contains(tableRecord.getPrimaryKey()));
         numberOfCells = (short) tableRecords.size();
         recalculateContentAreaStart();
     }
@@ -145,7 +137,7 @@ public class Page<T extends TableRecord> {
         contentAreaStartCell = (short) pageSize;
     }
 
-    private byte[] serialize() {
+    public byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(pageSize);
         buffer.put(pageType);
         buffer.put((byte) 0x00);
@@ -176,5 +168,12 @@ public class Page<T extends TableRecord> {
     private int offsetFor(T tableRecord) {
         return cellOffsets.get(tableRecords.indexOf(tableRecord));
     }
-}
 
+    private boolean hasEnoughSpaceForRecords() {
+        return contentAreaStartCell >= (16 + 2 * (numberOfCells + 1));
+    }
+
+    private boolean hasEnoughSpaceForUpdatedRecords(short newContentAreaStart, List<Short> newCellOffsets) {
+        return newContentAreaStart >= (16 + 2 * (newCellOffsets.size() + 1));
+    }
+}
