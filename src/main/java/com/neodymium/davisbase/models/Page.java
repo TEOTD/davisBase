@@ -39,10 +39,6 @@ public class Page<T extends TableRecord> {
         this.tableRecords = new ArrayList<>();
     }
 
-    public static <T extends TableRecord> Page<T> create(int pageSize, int pageNumber, byte pageType, short rootPage, short parentPage, short siblingPage) {
-        return new Page<>(pageSize, pageNumber, pageType, rootPage, parentPage, siblingPage);
-    }
-
     public static <T extends TableRecord> Page<T> deserialize(byte[] data, int pageNumber, TableRecordFactory<T> factory) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(data);
