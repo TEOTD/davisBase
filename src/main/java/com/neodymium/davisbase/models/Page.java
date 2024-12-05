@@ -6,100 +6,133 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
-public record Page<T extends TableRecord>(
-        int pageSize,
-        byte pageType,
-        short numberOfCells,
-        short contentAreaStartCell,
-        short rootPage,
-        short parentPage,
-        short siblingPage,
-        List<Short> cellOffsets,
-        List<T> tableRecords
-) {
-    static <T extends TableRecord> Page<T> deserialize(byte[] data, TableRecordFactory<T> factory) {
-        try {
-            ByteBuffer buffer = ByteBuffer.wrap(data);
-            byte pageType = buffer.get();
-            buffer.get();
-            short numberOfCells = buffer.getShort();
-            short contentAreaStartCell = buffer.getShort();
-            buffer.getInt();
-            short rootPage = buffer.getShort();
-            short parentPage = buffer.getShort();
-            short siblingPage = buffer.getShort();
+public class Page<T extends TableRecord> {
+    private final int pageSize;
+    private final List<Short> cellOffsets;
+    private final List<T> tableRecords;
+    private final byte pageType;
+    private final short rootPage;
+    private final short parentPage;
+    private final short siblingPage;
+    private short numberOfCells;
+    private short contentAreaStartCell;
 
-            List<Short> cellOffsets = new ArrayList<>(numberOfCells);
-            for (int i = 0; i < numberOfCells; i++) {
-                cellOffsets.add(buffer.getShort());
-            }
-
-            List<T> tableRecords = new ArrayList<>(numberOfCells);
-            for (short offset : cellOffsets) {
-                buffer.position(offset);
-                T tableRecord = factory.createFromBytes(buffer);
-                tableRecords.add(tableRecord);
-            }
-
-            return new Page<>(
-                    data.length,
-                    pageType,
-                    numberOfCells,
-                    contentAreaStartCell,
-                    rootPage,
-                    parentPage,
-                    siblingPage,
-                    cellOffsets,
-                    tableRecords
-            );
-        } catch (Exception e) {
-            log.error("Error during deserialization", e);
-            throw new DavisBaseException("Failed to deserialize Page: " + e.getMessage());
-        }
+    public Page(int pageSize, byte pageType) {
+        this.pageSize = pageSize;
+        this.pageType = pageType;
+        this.numberOfCells = 0;
+        this.contentAreaStartCell = (short) pageSize;
+        this.rootPage = -1;
+        this.parentPage = -1;
+        this.siblingPage = -1;
+        this.cellOffsets = new ArrayList<>();
+        this.tableRecords = new ArrayList<>();
     }
 
-    byte[] serialize() {
+    public static <T extends TableRecord> Page<T> create(int pageSize, byte pageType) {
+        return new Page<>(pageSize, pageType);
+    }
+
+    public void insert(List<T> tableRecords) {
+        for (T tableRecord : tableRecords) {
+            byte[] serializedRecord = tableRecord.serialize();
+            contentAreaStartCell -= (short) serializedRecord.length;
+
+            if (contentAreaStartCell < (16 + (2 * (numberOfCells + 1)))) {
+                throw new DavisBaseException("Page full - not enough space for all records.");
+            }
+
+            this.tableRecords.add(tableRecord);
+            cellOffsets.add(contentAreaStartCell);
+        }
+        numberOfCells += (short) tableRecords.size();
+    }
+
+    public void update(List<T> updatedRecords) {
+        Map<String, T> updates = updatedRecords.stream()
+                .collect(Collectors.toMap(T::getPrimaryKey, tableRecord -> tableRecord));
+        List<T> newTableRecords = new ArrayList<>();
+        short newContentAreaStart = (short) pageSize;
+        List<Short> newCellOffsets = new ArrayList<>();
+
+        for (T existingRecord : tableRecords) {
+            T recordToInsert = updates.getOrDefault(existingRecord.getPrimaryKey(), existingRecord);
+
+            byte[] serializedRecord = recordToInsert.serialize();
+            newContentAreaStart -= (short) serializedRecord.length;
+
+            if (newContentAreaStart < (16 + 2 * (newCellOffsets.size() + 1))) {
+                throw new DavisBaseException("Page full - not enough space for updated records.");
+            }
+
+            newTableRecords.add(recordToInsert);
+            newCellOffsets.add(newContentAreaStart);
+        }
+
+        tableRecords.clear();
+        tableRecords.addAll(newTableRecords);
+        cellOffsets.clear();
+        cellOffsets.addAll(newCellOffsets);
+
+        numberOfCells = (short) tableRecords.size();
+        contentAreaStartCell = newContentAreaStart;
+    }
+
+    public void delete(List<String> primaryKeys) {
+        List<T> toRemove = new ArrayList<>();
+        for (String primaryKey : primaryKeys) {
+            tableRecords.stream()
+                    .filter(tableRecord -> tableRecord.getPrimaryKey().equals(primaryKey))
+                    .findFirst()
+                    .ifPresent(toRemove::add);
+        }
+
+        tableRecords.removeAll(toRemove);
+        numberOfCells = (short) tableRecords.size();
+        recalculateContentAreaStart();
+    }
+
+    public void truncate() {
+        tableRecords.clear();
+        cellOffsets.clear();
+        numberOfCells = 0;
+        contentAreaStartCell = (short) pageSize;
+    }
+
+    private byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(pageSize);
         buffer.put(pageType);
         buffer.put((byte) 0x00);
-        buffer.putShort((short) tableRecords.size());
-        buffer.putShort((short) pageSize);
+        buffer.putShort(numberOfCells);
+        buffer.putShort(contentAreaStartCell);
         buffer.putInt(0x00);
         buffer.putShort(rootPage);
         buffer.putShort(parentPage);
         buffer.putShort(siblingPage);
-
-        int contentAreaPointer = pageSize;
-        RecordOffset[] recordOffsets = new RecordOffset[tableRecords.size()];
-        for (int i = 0; i < tableRecords.size(); i++) {
-            T tableRecord = tableRecords.get(i);
-            byte[] serializedRecord = tableRecord.serialize();
-            contentAreaPointer -= serializedRecord.length;
-
-            if (contentAreaPointer < buffer.position() + (2 * tableRecords.size())) {
-                log.error("Page full during record addition");
-                throw new DavisBaseException("Page full - not enough space for all records.");
-            }
-
-            buffer.position(contentAreaPointer);
-            buffer.put(serializedRecord);
-            recordOffsets[i] = new RecordOffset(contentAreaPointer, tableRecord.getPrimaryKey());
+        for (short offset : cellOffsets) {
+            buffer.putShort(offset);
+        }
+        for (T tableRecord : tableRecords) {
+            buffer.position(offsetFor(tableRecord));
+            buffer.put(tableRecord.serialize());
         }
 
-        buffer.position(16);
-        for (RecordOffset recordOffset : recordOffsets) {
-            buffer.putShort((short) recordOffset.offset);
-        }
-        buffer.putShort(4, (short) contentAreaPointer);
         return buffer.array();
     }
 
-    public interface TableRecordFactory<T> {
-        T createFromBytes(ByteBuffer buffer);
+    private void recalculateContentAreaStart() {
+        contentAreaStartCell = (short) pageSize;
+        for (T tableRecord : tableRecords) {
+            contentAreaStartCell -= (short) tableRecord.serialize().length;
+        }
     }
 
-    private record RecordOffset(int offset, String primaryKey) {
+    private int offsetFor(T tableRecord) {
+        return cellOffsets.get(tableRecords.indexOf(tableRecord));
     }
 }
+
