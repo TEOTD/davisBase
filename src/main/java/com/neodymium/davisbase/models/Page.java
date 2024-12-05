@@ -21,20 +21,62 @@ public class Page<T extends TableRecord> {
     private short numberOfCells;
     private short contentAreaStartCell;
 
-    public Page(int pageSize, byte pageType) {
+    public Page(int pageSize, byte pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageSize = pageSize;
         this.pageType = pageType;
         this.numberOfCells = 0;
         this.contentAreaStartCell = (short) pageSize;
-        this.rootPage = -1;
-        this.parentPage = -1;
-        this.siblingPage = -1;
+        this.rootPage = rootPage;
+        this.parentPage = parentPage;
+        this.siblingPage = siblingPage;
         this.cellOffsets = new ArrayList<>();
         this.tableRecords = new ArrayList<>();
     }
 
-    public static <T extends TableRecord> Page<T> create(int pageSize, byte pageType) {
-        return new Page<>(pageSize, pageType);
+    public static <T extends TableRecord> Page<T> create(int pageSize, byte pageType, short rootPage, short parentPage, short siblingPage) {
+        return new Page<>(pageSize, pageType, rootPage, parentPage, siblingPage);
+    }
+
+    public static <T extends TableRecord> Page<T> deserialize(byte[] data, TableRecord<T> factory) {
+        try {
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+            byte pageType = buffer.get();
+            buffer.get();
+            short numberOfCells = buffer.getShort();
+            short contentAreaStartCell = buffer.getShort();
+            buffer.getInt();
+            short rootPage = buffer.getShort();
+            short parentPage = buffer.getShort();
+            short siblingPage = buffer.getShort();
+
+            List<Short> cellOffsets = new ArrayList<>(numberOfCells);
+            for (int i = 0; i < numberOfCells; i++) {
+                cellOffsets.add(buffer.getShort());
+            }
+
+            List<T> tableRecords = new ArrayList<>(numberOfCells);
+            for (short offset : cellOffsets) {
+                buffer.position(offset);
+                T tableRecord = factory.deserialize(buffer.array());
+                tableRecords.add(tableRecord);
+            }
+
+            Page<T> page = new Page<>(
+                    data.length,
+                    pageType,
+                    rootPage,
+                    parentPage,
+                    siblingPage
+            );
+            page.numberOfCells = numberOfCells;
+            page.contentAreaStartCell = contentAreaStartCell;
+            page.cellOffsets.addAll(cellOffsets);
+            page.tableRecords.addAll(tableRecords);
+            return page;
+        } catch (Exception e) {
+            log.error("Error during deserialization", e);
+            throw new DavisBaseException("Failed to deserialize Page: " + e.getMessage());
+        }
     }
 
     public void insert(List<T> tableRecords) {
