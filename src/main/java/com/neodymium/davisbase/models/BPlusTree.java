@@ -43,14 +43,8 @@ public class BPlusTree<T extends TableRecord> {
     }
 
     private void splitPage(Page<T> currentPage, int currentPageNo) throws IOException {
-        Page<T> rightPage = new Page<>(pageSize, currentPageNo + 1, PageTypes.LEAF.getValue(), currentPage.getRootPage(), (short) -1, (short) -1);
-        if (currentPage.getParentPage() == -1) {
-            Page<T> parentPage = new Page<>(pageSize, PageTypes.INTERIOR.getValue(), currentPage.getRootPage(), (short) -1, (short) (currentPageNo + 1));
-            currentPage.setSiblingPage((short) (currentPageNo + 1));
-            currentPage.setParentPage();
-        } else {
-
-        }
+        //split page according to b+ one tree.
+        //if
     }
 
     private Page<T> loadPage(short pageNo, TableRecordFactory<T> factory) throws IOException {
