@@ -117,8 +117,6 @@ public class BPlusTree<T extends TableRecord> {
 
     private void updateAllPagesRootPageId(int newRootPageId) throws IOException {
         for (long i = 0; i < tableFile.length() / pageSize; i++) {
-            Page<T> page = loadPage((short) i);
-            page.setRootPage((short) newRootPageId);
             long rootPageIdOffset = i * pageSize + 10;
             tableFile.seek(rootPageIdOffset);
             tableFile.writeShort((short) newRootPageId);
