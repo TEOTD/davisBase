@@ -47,7 +47,7 @@ public class BPlusTree<T extends TableRecord> {
     }
 
     private Page<T> findRightmostLeafPage() throws IOException {
-        short pageNo = 0; // Start at the root page
+        short pageNo = (short) (tableFile.length() / pageSize);
         Page<T> currentPage = loadPage(pageNo);
         while (currentPage.getPageType() == PageTypes.INTERIOR.getValue()) {
             short childPageNo = currentPage.getSiblingPage();
