@@ -14,13 +14,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @Getter
 @Setter
-public class Page {
+public class Page<T extends TableRecord> {
     private final int pageSize;
     private final int pageNumber;
     private final List<Short> cellOffsets;
-    private final List<TableRecord> tableRecords;
+    private final List<T> tableRecords;
     private final byte pageType;
-    private final short rootPage;
+    private short rootPage;
     private short parentPage;
     private short siblingPage;
     private short numberOfCells;
@@ -39,7 +39,7 @@ public class Page {
         this.tableRecords = new ArrayList<>();
     }
 
-    public static Page deserialize(byte[] data, int pageNumber, TableRecordFactory factory) {
+    public static <T extends TableRecord> Page<T> deserialize(byte[] data, int pageNumber, TableRecordFactory<T> factory) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(data);
             byte pageType = buffer.get();
@@ -56,14 +56,14 @@ public class Page {
                 cellOffsets.add(buffer.getShort());
             }
 
-            List<TableRecord> tableRecords = new ArrayList<>(numberOfCells);
+            List<T> tableRecords = new ArrayList<>(numberOfCells);
             for (short offset : cellOffsets) {
                 buffer.position(offset);
-                TableRecord tableRecord = factory.deserialize(buffer.array());
+                T tableRecord = factory.deserialize(buffer.array());
                 tableRecords.add(tableRecord);
             }
 
-            Page page = new Page(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
+            Page<T> page = new Page<>(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
             page.numberOfCells = numberOfCells;
             page.contentAreaStartCell = contentAreaStartCell;
             page.cellOffsets.addAll(cellOffsets);
@@ -75,8 +75,8 @@ public class Page {
         }
     }
 
-    public void insert(List<TableRecord> tableRecords) {
-        for (TableRecord tableRecord : tableRecords) {
+    public void insert(List<T> tableRecords) {
+        for (T tableRecord : tableRecords) {
             byte[] serializedRecord = tableRecord.serialize();
             contentAreaStartCell -= (short) serializedRecord.length;
 
@@ -90,15 +90,15 @@ public class Page {
         numberOfCells += (short) tableRecords.size();
     }
 
-    public void update(List<TableRecord> updatedRecords) {
-        Map<String, TableRecord> updates = updatedRecords.stream()
-                .collect(Collectors.toMap(TableRecord::getPrimaryKey, tableRecord -> tableRecord));
-        List<TableRecord> newTableRecords = new ArrayList<>();
+    public void update(List<T> updatedRecords) {
+        Map<String, T> updates = updatedRecords.stream()
+                .collect(Collectors.toMap(T::getPrimaryKey, tableRecord -> tableRecord));
+        List<T> newTableRecords = new ArrayList<>();
         short newContentAreaStart = (short) pageSize;
         List<Short> newCellOffsets = new ArrayList<>();
 
-        for (TableRecord existingRecord : tableRecords) {
-            TableRecord recordToInsert = updates.getOrDefault(existingRecord.getPrimaryKey(), existingRecord);
+        for (T existingRecord : tableRecords) {
+            T recordToInsert = updates.getOrDefault(existingRecord.getPrimaryKey(), existingRecord);
 
             byte[] serializedRecord = recordToInsert.serialize();
             newContentAreaStart -= (short) serializedRecord.length;
@@ -146,7 +146,7 @@ public class Page {
         for (short offset : cellOffsets) {
             buffer.putShort(offset);
         }
-        for (TableRecord tableRecord : tableRecords) {
+        for (T tableRecord : tableRecords) {
             buffer.position(offsetFor(tableRecord));
             buffer.put(tableRecord.serialize());
         }
@@ -156,12 +156,12 @@ public class Page {
 
     private void recalculateContentAreaStart() {
         contentAreaStartCell = (short) pageSize;
-        for (TableRecord tableRecord : tableRecords) {
+        for (T tableRecord : tableRecords) {
             contentAreaStartCell -= (short) tableRecord.serialize().length;
         }
     }
 
-    private int offsetFor(TableRecord tableRecord) {
+    private int offsetFor(T tableRecord) {
         return cellOffsets.get(tableRecords.indexOf(tableRecord));
     }
 
