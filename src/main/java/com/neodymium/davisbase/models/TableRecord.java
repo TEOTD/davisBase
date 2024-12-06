@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-public class TableRecord {
+public class TableRecord implements Record {
     private final int rowId;                          // Unique row identifier
     private final Map<String, Object> data;          // Dynamic column-value map
     private final String primaryKeyColumn;           // Name of the primary key column
@@ -28,6 +28,7 @@ public class TableRecord {
      *
      * @return Serialized byte array
      */
+    @Override
     public byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(getSize());
         buffer.putInt(rowId); // Serialize row ID
@@ -195,5 +196,15 @@ public class TableRecord {
                 "rowId=" + rowId +
                 ", data=" + data +
                 '}';
+    }
+
+    @Override
+    public void delete() {
+
+    }
+
+    @Override
+    public boolean isDeleted() {
+        return false;
     }
 }

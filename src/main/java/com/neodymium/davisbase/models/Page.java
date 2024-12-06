@@ -7,14 +7,14 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Slf4j
 @Getter
 @Setter
-public class Page<T extends TableRecord> {
+public class Page<T extends Record> {
     private final int pageSize;
     private final int pageNumber;
     private final List<Short> cellOffsets;
@@ -76,40 +76,53 @@ public class Page<T extends TableRecord> {
     }
 
     public void insert(List<T> tableRecords) {
+        if (!hasEnoughSpaceForRecords(tableRecords)) {
+            throw new DavisBaseException("Page full - not enough space for all records.");
+        }
+
+        List<RecordOffset> recordOffsets = new ArrayList<>();
         for (T tableRecord : tableRecords) {
             byte[] serializedRecord = tableRecord.serialize();
             contentAreaStartCell -= (short) serializedRecord.length;
 
-            if (!hasEnoughSpaceForRecords()) {
-                throw new DavisBaseException("Page full - not enough space for all records.");
-            }
-
             this.tableRecords.add(tableRecord);
-            cellOffsets.add(contentAreaStartCell);
+            recordOffsets.add(new RecordOffset(contentAreaStartCell, tableRecord.getPrimaryKey()));
+        }
+        recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
+        cellOffsets.clear();
+        for (RecordOffset recordOffset : recordOffsets) {
+            cellOffsets.add((short) recordOffset.offset());
         }
         numberOfCells += (short) tableRecords.size();
     }
 
     public void update(List<T> updatedRecords) {
-        Map<String, T> updates = updatedRecords.stream()
-                .collect(Collectors.toMap(T::getPrimaryKey, tableRecord -> tableRecord));
+        int filledSpace = tableRecords.size() + cellOffsets.size() + 16;
+        if (!hasEnoughSpaceForUpdatedRecords(filledSpace, updatedRecords, tableRecords)) {
+            throw new DavisBaseException("Page full - not enough space for updated records.");
+        }
+
         List<T> newTableRecords = new ArrayList<>();
+        List<RecordOffset> recordOffsets = new ArrayList<>();
         short newContentAreaStart = (short) pageSize;
-        List<Short> newCellOffsets = new ArrayList<>();
 
         for (T existingRecord : tableRecords) {
-            T recordToInsert = updates.getOrDefault(existingRecord.getPrimaryKey(), existingRecord);
+            T recordToInsert = updatedRecords.stream()
+                    .filter(tableRecord -> tableRecord.getPrimaryKey().equals(existingRecord.getPrimaryKey()))
+                    .findFirst()
+                    .orElse(existingRecord);
 
             byte[] serializedRecord = recordToInsert.serialize();
             newContentAreaStart -= (short) serializedRecord.length;
 
-            if (!hasEnoughSpaceForUpdatedRecords(newContentAreaStart, newCellOffsets)) {
-                throw new DavisBaseException("Page full - not enough space for updated records.");
-            }
-
             newTableRecords.add(recordToInsert);
-            newCellOffsets.add(newContentAreaStart);
+            recordOffsets.add(new RecordOffset(newContentAreaStart, recordToInsert.getPrimaryKey()));
         }
+
+        recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
+        List<Short> newCellOffsets = recordOffsets.stream()
+                .map(offset -> (short) offset.offset())
+                .toList();
 
         tableRecords.clear();
         tableRecords.addAll(newTableRecords);
@@ -120,17 +133,18 @@ public class Page<T extends TableRecord> {
         contentAreaStartCell = newContentAreaStart;
     }
 
-    public void delete(List<String> primaryKeys) {
-        tableRecords.removeIf(tableRecord -> primaryKeys.contains(tableRecord.getPrimaryKey()));
-        numberOfCells = (short) tableRecords.size();
-        recalculateContentAreaStart();
+    public void delete(List<Integer> rowIds) {
+        for (T tableRecord : tableRecords) {
+            if (rowIds.contains(tableRecord.getRowId())) {
+                tableRecord.delete();
+            }
+        }
     }
 
     public void truncate() {
-        tableRecords.clear();
-        cellOffsets.clear();
-        numberOfCells = 0;
-        contentAreaStartCell = (short) pageSize;
+        for (T tableRecord : tableRecords) {
+            tableRecord.delete();
+        }
     }
 
     public byte[] serialize() {
@@ -154,22 +168,45 @@ public class Page<T extends TableRecord> {
         return buffer.array();
     }
 
-    private void recalculateContentAreaStart() {
-        contentAreaStartCell = (short) pageSize;
-        for (T tableRecord : tableRecords) {
-            contentAreaStartCell -= (short) tableRecord.serialize().length;
-        }
-    }
-
     private int offsetFor(T tableRecord) {
         return cellOffsets.get(tableRecords.indexOf(tableRecord));
     }
 
-    private boolean hasEnoughSpaceForRecords() {
-        return contentAreaStartCell >= (16 + 2 * (numberOfCells + 1));
+    private boolean hasEnoughSpaceForRecords(List<T> tableRecords) {
+        short requiredSpace = 0;
+        for (T tableRecord : tableRecords) {
+            requiredSpace += (short) tableRecord.serialize().length;
+        }
+        int availableSpace = contentAreaStartCell - requiredSpace;
+        return availableSpace >= (16 + 2 * (numberOfCells + tableRecords.size()));
     }
 
-    private boolean hasEnoughSpaceForUpdatedRecords(short newContentAreaStart, List<Short> newCellOffsets) {
-        return newContentAreaStart >= (16 + 2 * (newCellOffsets.size() + 1));
+    private boolean hasEnoughSpaceForUpdatedRecords(int currentStart, List<T> newRecords, List<T> existingRecords) {
+        short requiredSpace = 0;
+        for (T tableRecord : existingRecords) {
+            T recordToInsert = newRecords.stream()
+                    .filter(r -> r.getPrimaryKey().equals(tableRecord.getPrimaryKey()))
+                    .findFirst()
+                    .orElse(tableRecord);
+
+            requiredSpace += (short) recordToInsert.serialize().length;
+        }
+        int availableSpace = currentStart - requiredSpace;
+        return availableSpace >= (16 + 2 * (existingRecords.size() + newRecords.size()));
+    }
+
+    public Optional<T> getTableRecord(int rowId) {
+        return tableRecords.stream()
+                .filter(tableRecord -> tableRecord.getRowId() == rowId)
+                .findFirst();
+    }
+
+    public short findChildPage(int rowId) {
+        return tableRecords.stream()
+                .filter(tableRecord -> tableRecord.getRowId() < rowId)
+                .findFirst();
+    }
+
+    private record RecordOffset(int offset, String primaryKey) {
     }
 }

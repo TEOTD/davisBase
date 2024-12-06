@@ -21,7 +21,7 @@ public class Table {
     public Table(String tableName) throws IOException {
         this.tableName = tableName;
         this.tableFilePath = "data/" + tableName + ".tbl";
-        this.indexFilePath = "data/" + tableName + "_index.idx";
+        this.indexFilePath = "data/" + tableName + "_index.ndx";
 
         File tableFile = new File(tableFilePath);
         File indexFile = new File(indexFilePath);
@@ -41,16 +41,13 @@ public class Table {
     /**
      * Initializes a new table file with an empty root page and updates metadata files.
      */
-    private void initializeTableFile(File tableFile) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(tableFile, "rw")) {
-            raf.setLength(PAGE_SIZE);
-            raf.seek(0);
-            raf.writeByte(0x0D); // Leaf page type
-            raf.writeShort(0);   // Number of cells
-            raf.writeShort(PAGE_SIZE); // Starting position of free space
-            raf.writeInt(0xFFFFFFFF); // No right sibling
-        }
 
+    private void initializeTableFile(File tableFile) throws IOException {
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(tableFile, "rw")) {
+            randomAccessFile.setLength(PAGE_SIZE);
+            byte[] emptyPage = new byte[PAGE_SIZE];
+            randomAccessFile.write(emptyPage);
+        }
         registerTableInMetaData();
     }
 
