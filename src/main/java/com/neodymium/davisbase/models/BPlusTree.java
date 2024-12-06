@@ -30,6 +30,12 @@ public class BPlusTree<T extends TableRecord> {
         return Page.deserialize(pageData, pageNo, factory);
     }
 
+    public void create(int pageSize) throws IOException {
+        Page<T> rootPage = new Page<>(pageSize, 0, PageTypes.LEAF.getValue(),
+                (short) 0, (short) 0xFFFF, (short) 0xFFFF);
+        writePage(rootPage, 0);
+    }
+
     public void insert(T newRecord) throws IOException {
         Page<T> rightmostPage = findRightmostLeafPage();
         try {
