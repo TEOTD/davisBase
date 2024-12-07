@@ -46,9 +46,9 @@ public class CMDController implements CommandLineRunner {
                     break;
                 }
             }
-        } catch (Exception e) {
-            log.error("An error occurred while processing commands: ", e);
-            throw new DavisBaseException("An error occurred while processing commands: " + e);
+        } catch (Exception exception) {
+            log.error("An error occurred while processing commands: ", exception);
+            throw new DavisBaseException(exception);
         }
     }
 
