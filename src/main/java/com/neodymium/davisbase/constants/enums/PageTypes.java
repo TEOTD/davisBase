@@ -1,8 +1,13 @@
 package com.neodymium.davisbase.constants.enums;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 import java.util.HashMap;
 import java.util.Map;
 
+@Getter
+@AllArgsConstructor
 public enum PageTypes {
     INTERIOR((byte) 5),
     INTERIOR_INDEX((byte) 2),
@@ -18,15 +23,8 @@ public enum PageTypes {
 
     private final byte value;
 
-    PageTypes(byte value) {
-        this.value = value;
-    }
-
     public static PageTypes get(byte value) {
         return pageTypeLookup.get(value);
     }
 
-    public byte getValue() {
-        return value;
-    }
 }

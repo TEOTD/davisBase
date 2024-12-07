@@ -1,9 +1,14 @@
 package com.neodymium.davisbase.constants.enums;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 
+@Getter
+@AllArgsConstructor
 public enum DataTypes {
     NULL((byte) 0) {
         @Override
@@ -113,10 +118,6 @@ public enum DataTypes {
 
     private final byte value;
 
-    DataTypes(byte value) {
-        this.value = value;
-    }
-
     public static DataTypes get(byte value) {
         if (value > 12)
             return DataTypes.TEXT;
@@ -136,10 +137,6 @@ public enum DataTypes {
             return dataTypeSizeLookup.get(value);
         else
             return value - 12;
-    }
-
-    public byte getValue() {
-        return value;
     }
 
     public int getPrintOffset() {

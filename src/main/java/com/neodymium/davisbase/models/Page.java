@@ -19,7 +19,7 @@ public class Page {
     private final int pageNumber;
     private final byte pageType;
     private final List<Short> cellOffsets = new ArrayList<>();
-    private final List<Cell> tableRecords = new ArrayList<>();
+    private final List<Cell> cells = new ArrayList<>();
     private short rootPage;
     private short parentPage;
     private short siblingPage;
@@ -35,111 +35,106 @@ public class Page {
         this.siblingPage = siblingPage;
     }
 
-    public static Page deserialize(byte[] data, int pageNumber, TableCellFactory factory) {
-        try {
-            ByteBuffer buffer = ByteBuffer.wrap(data);
-            byte pageType = buffer.get();
-            buffer.get();
-            short numberOfCells = buffer.getShort();
-            short contentAreaStartCell = buffer.getShort();
-            buffer.getInt();
-            short rootPage = buffer.getShort();
-            short parentPage = buffer.getShort();
-            short siblingPage = buffer.getShort();
+    public static Page deserialize(byte[] data, int pageNumber, CellFactory factory) {
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+        byte pageType = buffer.get();
+        buffer.get();
+        short numberOfCells = buffer.getShort();
+        short contentAreaStartCell = buffer.getShort();
+        buffer.getInt();
+        short rootPage = buffer.getShort();
+        short parentPage = buffer.getShort();
+        short siblingPage = buffer.getShort();
 
-            List<Short> cellOffsets = new ArrayList<>(numberOfCells);
-            for (int i = 0; i < numberOfCells; i++) {
-                cellOffsets.add(buffer.getShort());
-            }
-
-            List<Cell> tableRecords = new ArrayList<>(numberOfCells);
-            for (short offset : cellOffsets) {
-                buffer.position(offset);
-                Cell tableRecord = factory.deserialize(buffer.array());
-                tableRecords.add(tableRecord);
-            }
-
-            Page page = new Page(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
-            page.numberOfCells = numberOfCells;
-            page.contentAreaStartCell = contentAreaStartCell;
-            page.cellOffsets.addAll(cellOffsets);
-            page.tableRecords.addAll(tableRecords);
-            return page;
-        } catch (Exception e) {
-            log.error("Error during deserialization", e);
-            throw new DavisBaseException("Failed to deserialize Page: " + e.getMessage());
+        List<Short> cellOffsets = new ArrayList<>(numberOfCells);
+        for (int i = 0; i < numberOfCells; i++) {
+            cellOffsets.add(buffer.getShort());
         }
+
+        List<Cell> cells = new ArrayList<>(numberOfCells);
+        for (short offset : cellOffsets) {
+            buffer.position(offset);
+            Cell cell = factory.deserialize(buffer.array());
+            cells.add(cell);
+        }
+
+        Page page = new Page(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
+        page.numberOfCells = numberOfCells;
+        page.contentAreaStartCell = contentAreaStartCell;
+        page.cellOffsets.addAll(cellOffsets);
+        page.cells.addAll(cells);
+        return page;
     }
 
-    public void insert(List<Cell> tableRecords) {
-        if (!hasEnoughSpaceForRecords(tableRecords)) {
-            throw new DavisBaseException("Page full - not enough space for all records.");
+    public void insert(List<Cell> cells) {
+        if (!hasEnoughSpaceForCells(cells)) {
+            throw new DavisBaseException("Page full - not enough space for all cells.");
         }
 
-        List<RecordOffset> recordOffsets = new ArrayList<>();
-        for (Cell tableRecord : tableRecords) {
-            byte[] serializedRecord = tableRecord.serialize();
-            contentAreaStartCell -= (short) serializedRecord.length;
+        List<CellOffset> cellOffsets = new ArrayList<>();
+        for (Cell cell : cells) {
+            byte[] serializedCell = cell.serialize();
+            contentAreaStartCell -= (short) serializedCell.length;
 
-            this.tableRecords.add(tableRecord);
-            recordOffsets.add(new RecordOffset(contentAreaStartCell, tableRecord.primaryKey()));
+            this.cells.add(cell);
+            cellOffsets.add(new CellOffset(contentAreaStartCell, cell.primaryKey()));
         }
-        recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
-        cellOffsets.clear();
-        for (RecordOffset recordOffset : recordOffsets) {
-            cellOffsets.add((short) recordOffset.offset());
+        cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        this.cellOffsets.clear();
+        for (CellOffset cellOffset : cellOffsets) {
+            this.cellOffsets.add((short) cellOffset.offset());
         }
-        numberOfCells += (short) tableRecords.size();
+        numberOfCells += (short) cells.size();
     }
 
-    public void update(List<Cell> updatedRecords) {
-        int filledSpace = tableRecords.size() + cellOffsets.size() + 16;
-        if (!hasEnoughSpaceForUpdatedRecords(filledSpace, updatedRecords, tableRecords)) {
-            throw new DavisBaseException("Page full - not enough space for updated records.");
+    public void update(List<Cell> cells) {
+        int filledSpace = this.cells.size() + this.cellOffsets.size() + 16;
+        if (!hasEnoughSpaceForUpdatedCells(filledSpace, cells, this.cells)) {
+            throw new DavisBaseException("Page full - not enough space for updated cells.");
         }
 
-        List<Cell> newTableRecords = new ArrayList<>();
-        List<RecordOffset> recordOffsets = new ArrayList<>();
+        List<Cell> newCells = new ArrayList<>();
+        List<CellOffset> cellOffsets = new ArrayList<>();
         short newContentAreaStart = (short) pageSize;
 
-        for (Cell existingRecord : tableRecords) {
-            Cell recordToInsert = updatedRecords.stream()
-                    .filter(tableRecord -> tableRecord.primaryKey().equals(existingRecord.primaryKey()))
+        for (Cell existingCell : this.cells) {
+            Cell cellToInsert = cells.stream()
+                    .filter(cell -> cell.primaryKey().equals(existingCell.primaryKey()))
                     .findFirst()
-                    .orElse(existingRecord);
+                    .orElse(existingCell);
 
-            byte[] serializedRecord = recordToInsert.serialize();
-            newContentAreaStart -= (short) serializedRecord.length;
+            byte[] serializedCell = cellToInsert.serialize();
+            newContentAreaStart -= (short) serializedCell.length;
 
-            newTableRecords.add(recordToInsert);
-            recordOffsets.add(new RecordOffset(newContentAreaStart, recordToInsert.primaryKey()));
+            newCells.add(cellToInsert);
+            cellOffsets.add(new CellOffset(newContentAreaStart, cellToInsert.primaryKey()));
         }
 
-        recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
-        List<Short> newCellOffsets = recordOffsets.stream()
+        cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        List<Short> newCellOffsets = cellOffsets.stream()
                 .map(offset -> (short) offset.offset())
                 .toList();
 
-        tableRecords.clear();
-        tableRecords.addAll(newTableRecords);
-        cellOffsets.clear();
-        cellOffsets.addAll(newCellOffsets);
+        this.cells.clear();
+        this.cells.addAll(newCells);
+        this.cellOffsets.clear();
+        this.cellOffsets.addAll(newCellOffsets);
 
-        numberOfCells = (short) tableRecords.size();
+        numberOfCells = (short) this.cells.size();
         contentAreaStartCell = newContentAreaStart;
     }
 
     public void delete(List<Integer> rowIds) {
-        for (Cell tableRecord : tableRecords) {
-            if (rowIds.contains(tableRecord.rowId())) {
-                tableRecord.delete();
+        for (Cell cell : cells) {
+            if (rowIds.contains(cell.rowId())) {
+                cell.delete();
             }
         }
     }
 
     public void truncate() {
-        for (Cell tableRecord : tableRecords) {
-            tableRecord.delete();
+        for (Cell cell : cells) {
+            cell.delete();
         }
     }
 
@@ -156,72 +151,72 @@ public class Page {
         for (short offset : cellOffsets) {
             buffer.putShort(offset);
         }
-        for (Cell tableRecord : tableRecords) {
-            buffer.position(offsetFor(tableRecord));
-            buffer.put(tableRecord.serialize());
+        for (Cell cell : cells) {
+            buffer.position(offsetFor(cell));
+            buffer.put(cell.serialize());
         }
 
         return buffer.array();
     }
 
-    private int offsetFor(Cell tableRecord) {
-        return cellOffsets.get(tableRecords.indexOf(tableRecord));
+    private int offsetFor(Cell cell) {
+        return cellOffsets.get(cells.indexOf(cell));
     }
 
-    private boolean hasEnoughSpaceForRecords(List<Cell> tableRecords) {
+    private boolean hasEnoughSpaceForCells(List<Cell> cells) {
         short requiredSpace = 0;
-        for (Cell tableRecord : tableRecords) {
-            requiredSpace += (short) tableRecord.serialize().length;
+        for (Cell cell : cells) {
+            requiredSpace += (short) cell.serialize().length;
         }
         int availableSpace = contentAreaStartCell - requiredSpace;
-        return availableSpace >= (16 + 2 * (numberOfCells + tableRecords.size()));
+        return availableSpace >= (16 + 2 * (numberOfCells + cells.size()));
     }
 
-    private boolean hasEnoughSpaceForUpdatedRecords(int currentStart, List<Cell> newRecords, List<Cell> existingRecords) {
+    private boolean hasEnoughSpaceForUpdatedCells(int currentStart, List<Cell> newCells, List<Cell> existingCells) {
         short requiredSpace = 0;
-        for (Cell tableRecord : existingRecords) {
-            Cell recordToInsert = newRecords.stream()
-                    .filter(r -> r.primaryKey().equals(tableRecord.primaryKey()))
+        for (Cell existingCell : existingCells) {
+            Cell cellToInsert = newCells.stream()
+                    .filter(r -> r.primaryKey().equals(existingCell.primaryKey()))
                     .findFirst()
-                    .orElse(tableRecord);
+                    .orElse(existingCell);
 
-            requiredSpace += (short) recordToInsert.serialize().length;
+            requiredSpace += (short) cellToInsert.serialize().length;
         }
         int availableSpace = currentStart - requiredSpace;
-        return availableSpace >= (16 + 2 * (existingRecords.size() + newRecords.size()));
+        return availableSpace >= (16 + 2 * (existingCells.size() + newCells.size()));
     }
 
-    public Optional<Cell> getTableRecord(int rowId) {
-        return tableRecords.stream()
-                .filter(tableRecord -> tableRecord.rowId() == rowId)
+    public Optional<Cell> getTableCell(int rowId) {
+        return cells.stream()
+                .filter(cell -> cell.rowId() == rowId)
                 .findFirst();
     }
 
     public short findChildPage(int rowId) {
-        List<Cell> sortedTableRecords = new ArrayList<>(tableRecords);
-        sortedTableRecords.sort(Comparator.comparing(Cell::rowId).reversed());
-        return sortedTableRecords.stream()
-                .filter(tableRecord -> tableRecord.rowId() < rowId)
+        List<Cell> sortedCells = new ArrayList<>(cells);
+        sortedCells.sort(Comparator.comparing(Cell::rowId).reversed());
+        return sortedCells.stream()
+                .filter(cell -> cell.rowId() < rowId)
                 .findFirst()
                 .map(Cell::pageNumber)
                 .orElse(siblingPage);
     }
 
     public int getMaxRowId() {
-        return tableRecords.stream()
+        return cells.stream()
                 .mapToInt(Cell::rowId)
                 .max()
-                .orElseThrow(() -> new IllegalStateException("Table records are empty"));
+                .orElseThrow(() -> new IllegalStateException("Table cells are empty"));
     }
 
 
     public List<Cell> getTableCellsInRange(int minRowId, int maxRowId) {
-        return tableRecords.stream()
+        return cells.stream()
                 .filter(cell -> cell.rowId() >= minRowId && cell.rowId() <= maxRowId)
                 .toList();
     }
 
 
-    private record RecordOffset(int offset, String primaryKey) {
+    private record CellOffset(int offset, String primaryKey) {
     }
 }

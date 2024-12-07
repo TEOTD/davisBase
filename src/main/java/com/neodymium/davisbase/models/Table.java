@@ -15,7 +15,7 @@ public class Table {
     private final String tableName;
     private final String tableFilePath;
     private final String indexFilePath;
-    private final BPlusTree<TableRecord> bPlusTree;
+    private final BPlusTree bPlusTree;
     private final BTree<Integer> primaryKeyIndex;
 
     public Table(String tableName) throws IOException {
@@ -34,8 +34,8 @@ public class Table {
             initializeIndexFile(indexFile);
         }
 
-        this.bPlusTree = new BPlusTree<>(tableFilePath, PAGE_SIZE);
-        this.primaryKeyIndex = new BPlusTree<>(indexFilePath, PAGE_SIZE);
+        this.bPlusTree = new BPlusTree(tableFilePath, PAGE_SIZE);
+        this.primaryKeyIndex = new BPlusTree(indexFilePath, PAGE_SIZE);
     }
 
     /**
@@ -95,20 +95,20 @@ public class Table {
     /**
      * Inserts a record into the table and updates the primary key index.
      */
-    public void insert(TableRecord record) throws IOException {
+    public void insert(TableCell record) throws IOException {
         if (!bPlusTree.insert(record)) {
             throw new DavisBaseException("Failed to insert record into table.");
         }
 
         // Update the primary key index
-        int primaryKey = Integer.parseInt(record.getPrimaryKey());
-        primaryKeyIndex.insert(primaryKey, record.getRowId());
+        int primaryKey = Integer.parseInt(record.primaryKey());
+        primaryKeyIndex.insert(primaryKey, record.rowId());
     }
 
     /**
      * Retrieves records matching the given condition.
      */
-    public List<TableRecord> select(String condition) throws IOException {
+    public List<TableCell> select(String condition) throws IOException {
         return bPlusTree.search(condition);
     }
 
@@ -116,12 +116,12 @@ public class Table {
      * Deletes records matching the given condition.
      */
     public void delete(String condition) throws IOException {
-        List<TableRecord> records = bPlusTree.search(condition);
-        for (TableRecord record : records) {
-            bPlusTree.delete(record);
+        List<TableCell> records = bPlusTree.search(condition);
+        for (TableCell record : records) {
+            bPlusTree.delete(record.rowId());
 
             // Remove the primary key from the index
-            int primaryKey = Integer.parseInt(record.getPrimaryKey());
+            int primaryKey = Integer.parseInt(record.primaryKey());
             primaryKeyIndex.delete(primaryKey);
         }
     }
