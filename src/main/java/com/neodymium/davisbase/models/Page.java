@@ -1,8 +1,8 @@
 package com.neodymium.davisbase.models;
 
 import com.neodymium.davisbase.error.DavisBaseException;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
@@ -11,35 +11,31 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+@Data
 @Slf4j
-@Getter
-@Setter
-public class Page<T extends Record> {
+@RequiredArgsConstructor
+public class Page {
     private final int pageSize;
     private final int pageNumber;
-    private final List<Short> cellOffsets;
-    private final List<T> tableRecords;
     private final byte pageType;
+    private final List<Short> cellOffsets = new ArrayList<>();
+    private final List<Cell> tableRecords = new ArrayList<>();
     private short rootPage;
     private short parentPage;
     private short siblingPage;
-    private short numberOfCells;
-    private short contentAreaStartCell;
+    private short numberOfCells = 0;
+    private short contentAreaStartCell = (short) pageSize;
 
     public Page(int pageSize, int pageNumber, byte pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageSize = pageSize;
         this.pageNumber = pageNumber;
         this.pageType = pageType;
-        this.numberOfCells = 0;
-        this.contentAreaStartCell = (short) pageSize;
         this.rootPage = rootPage;
         this.parentPage = parentPage;
         this.siblingPage = siblingPage;
-        this.cellOffsets = new ArrayList<>();
-        this.tableRecords = new ArrayList<>();
     }
 
-    public static <T extends TableRecord> Page<T> deserialize(byte[] data, int pageNumber, TableRecordFactory<T> factory) {
+    public static Page deserialize(byte[] data, int pageNumber, TableCellFactory factory) {
         try {
             ByteBuffer buffer = ByteBuffer.wrap(data);
             byte pageType = buffer.get();
@@ -56,14 +52,14 @@ public class Page<T extends Record> {
                 cellOffsets.add(buffer.getShort());
             }
 
-            List<T> tableRecords = new ArrayList<>(numberOfCells);
+            List<Cell> tableRecords = new ArrayList<>(numberOfCells);
             for (short offset : cellOffsets) {
                 buffer.position(offset);
-                T tableRecord = factory.deserialize(buffer.array());
+                Cell tableRecord = factory.deserialize(buffer.array());
                 tableRecords.add(tableRecord);
             }
 
-            Page<T> page = new Page<>(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
+            Page page = new Page(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
             page.numberOfCells = numberOfCells;
             page.contentAreaStartCell = contentAreaStartCell;
             page.cellOffsets.addAll(cellOffsets);
@@ -75,18 +71,18 @@ public class Page<T extends Record> {
         }
     }
 
-    public void insert(List<T> tableRecords) {
+    public void insert(List<Cell> tableRecords) {
         if (!hasEnoughSpaceForRecords(tableRecords)) {
             throw new DavisBaseException("Page full - not enough space for all records.");
         }
 
         List<RecordOffset> recordOffsets = new ArrayList<>();
-        for (T tableRecord : tableRecords) {
+        for (Cell tableRecord : tableRecords) {
             byte[] serializedRecord = tableRecord.serialize();
             contentAreaStartCell -= (short) serializedRecord.length;
 
             this.tableRecords.add(tableRecord);
-            recordOffsets.add(new RecordOffset(contentAreaStartCell, tableRecord.getPrimaryKey()));
+            recordOffsets.add(new RecordOffset(contentAreaStartCell, tableRecord.primaryKey()));
         }
         recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
         cellOffsets.clear();
@@ -96,19 +92,19 @@ public class Page<T extends Record> {
         numberOfCells += (short) tableRecords.size();
     }
 
-    public void update(List<T> updatedRecords) {
+    public void update(List<Cell> updatedRecords) {
         int filledSpace = tableRecords.size() + cellOffsets.size() + 16;
         if (!hasEnoughSpaceForUpdatedRecords(filledSpace, updatedRecords, tableRecords)) {
             throw new DavisBaseException("Page full - not enough space for updated records.");
         }
 
-        List<T> newTableRecords = new ArrayList<>();
+        List<Cell> newTableRecords = new ArrayList<>();
         List<RecordOffset> recordOffsets = new ArrayList<>();
         short newContentAreaStart = (short) pageSize;
 
-        for (T existingRecord : tableRecords) {
-            T recordToInsert = updatedRecords.stream()
-                    .filter(tableRecord -> tableRecord.getPrimaryKey().equals(existingRecord.getPrimaryKey()))
+        for (Cell existingRecord : tableRecords) {
+            Cell recordToInsert = updatedRecords.stream()
+                    .filter(tableRecord -> tableRecord.primaryKey().equals(existingRecord.primaryKey()))
                     .findFirst()
                     .orElse(existingRecord);
 
@@ -116,7 +112,7 @@ public class Page<T extends Record> {
             newContentAreaStart -= (short) serializedRecord.length;
 
             newTableRecords.add(recordToInsert);
-            recordOffsets.add(new RecordOffset(newContentAreaStart, recordToInsert.getPrimaryKey()));
+            recordOffsets.add(new RecordOffset(newContentAreaStart, recordToInsert.primaryKey()));
         }
 
         recordOffsets.sort(Comparator.comparing(RecordOffset::primaryKey));
@@ -134,15 +130,15 @@ public class Page<T extends Record> {
     }
 
     public void delete(List<Integer> rowIds) {
-        for (T tableRecord : tableRecords) {
-            if (rowIds.contains(tableRecord.getRowId())) {
+        for (Cell tableRecord : tableRecords) {
+            if (rowIds.contains(tableRecord.rowId())) {
                 tableRecord.delete();
             }
         }
     }
 
     public void truncate() {
-        for (T tableRecord : tableRecords) {
+        for (Cell tableRecord : tableRecords) {
             tableRecord.delete();
         }
     }
@@ -160,7 +156,7 @@ public class Page<T extends Record> {
         for (short offset : cellOffsets) {
             buffer.putShort(offset);
         }
-        for (T tableRecord : tableRecords) {
+        for (Cell tableRecord : tableRecords) {
             buffer.position(offsetFor(tableRecord));
             buffer.put(tableRecord.serialize());
         }
@@ -168,24 +164,24 @@ public class Page<T extends Record> {
         return buffer.array();
     }
 
-    private int offsetFor(T tableRecord) {
+    private int offsetFor(Cell tableRecord) {
         return cellOffsets.get(tableRecords.indexOf(tableRecord));
     }
 
-    private boolean hasEnoughSpaceForRecords(List<T> tableRecords) {
+    private boolean hasEnoughSpaceForRecords(List<Cell> tableRecords) {
         short requiredSpace = 0;
-        for (T tableRecord : tableRecords) {
+        for (Cell tableRecord : tableRecords) {
             requiredSpace += (short) tableRecord.serialize().length;
         }
         int availableSpace = contentAreaStartCell - requiredSpace;
         return availableSpace >= (16 + 2 * (numberOfCells + tableRecords.size()));
     }
 
-    private boolean hasEnoughSpaceForUpdatedRecords(int currentStart, List<T> newRecords, List<T> existingRecords) {
+    private boolean hasEnoughSpaceForUpdatedRecords(int currentStart, List<Cell> newRecords, List<Cell> existingRecords) {
         short requiredSpace = 0;
-        for (T tableRecord : existingRecords) {
-            T recordToInsert = newRecords.stream()
-                    .filter(r -> r.getPrimaryKey().equals(tableRecord.getPrimaryKey()))
+        for (Cell tableRecord : existingRecords) {
+            Cell recordToInsert = newRecords.stream()
+                    .filter(r -> r.primaryKey().equals(tableRecord.primaryKey()))
                     .findFirst()
                     .orElse(tableRecord);
 
@@ -195,17 +191,36 @@ public class Page<T extends Record> {
         return availableSpace >= (16 + 2 * (existingRecords.size() + newRecords.size()));
     }
 
-    public Optional<T> getTableRecord(int rowId) {
+    public Optional<Cell> getTableRecord(int rowId) {
         return tableRecords.stream()
-                .filter(tableRecord -> tableRecord.getRowId() == rowId)
+                .filter(tableRecord -> tableRecord.rowId() == rowId)
                 .findFirst();
     }
 
     public short findChildPage(int rowId) {
-        return tableRecords.stream()
-                .filter(tableRecord -> tableRecord.getRowId() < rowId)
-                .findFirst();
+        List<Cell> sortedTableRecords = new ArrayList<>(tableRecords);
+        sortedTableRecords.sort(Comparator.comparing(Cell::rowId).reversed());
+        return sortedTableRecords.stream()
+                .filter(tableRecord -> tableRecord.rowId() < rowId)
+                .findFirst()
+                .map(Cell::pageNumber)
+                .orElse(siblingPage);
     }
+
+    public int getMaxRowId() {
+        return tableRecords.stream()
+                .mapToInt(Cell::rowId)
+                .max()
+                .orElseThrow(() -> new IllegalStateException("Table records are empty"));
+    }
+
+
+    public List<Cell> getTableCellsInRange(int minRowId, int maxRowId) {
+        return tableRecords.stream()
+                .filter(cell -> cell.rowId() >= minRowId && cell.rowId() <= maxRowId)
+                .toList();
+    }
+
 
     private record RecordOffset(int offset, String primaryKey) {
     }

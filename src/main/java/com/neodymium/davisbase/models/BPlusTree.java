@@ -6,29 +6,29 @@ import com.neodymium.davisbase.error.DavisBaseException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
-public class BPlusTree<T extends Record> {
+public class BPlusTree {
     private final int pageSize;
     private final RandomAccessFile tableFile;
-    private final TableRecordFactory<T> factory;
+    private final TableCellFactory factory;
 
-    public BPlusTree(String filePath, int pageSize, TableRecordFactory<T> factory) throws IOException {
+    public BPlusTree(String filePath, int pageSize, TableCellFactory factory) throws IOException {
         tableFile = new RandomAccessFile(filePath, "rw");
         this.pageSize = pageSize;
         this.factory = factory;
     }
 
     public void create(int pageSize) throws IOException {
-        Page<T> rootPage = new Page<>(pageSize, 0, PageTypes.LEAF.getValue(),
+        Page rootPage = new Page(pageSize, 0, PageTypes.LEAF.getValue(),
                 (short) 0, (short) 0xFFFF, (short) 0xFFFF);
         writePage(rootPage, 0);
     }
 
-    public void insert(T newRecord) throws IOException {
-        Page<T> rightmostPage = findRightmostLeafPage();
+    public void insert(Cell newRecord) throws IOException {
+        Page rightmostPage = findRightmostLeafPage();
         try {
             rightmostPage.insert(List.of(newRecord));
             writePage(rightmostPage, rightmostPage.getPageNumber());
@@ -37,67 +37,83 @@ public class BPlusTree<T extends Record> {
         }
     }
 
-    public void insert(List<T> newRecords) throws IOException {
-        for (T record : newRecords) {
+    public void insert(List<Cell> newRecords) throws IOException {
+        for (Cell record : newRecords) {
             insert(record);
         }
     }
 
-    public void update(T updatedRecord) throws IOException {
-        Optional<Record> existingRecord = search(updatedRecord.getRowId());
+    public void update(Cell updatedRecord) throws IOException {
+        Optional<Cell> existingRecord = search(updatedRecord.rowId());
         if (existingRecord.isPresent()) {
-            Page<T> page = loadPage(existingRecord.get().getPageNumber());
-            if (page.canUpdateRecord(updatedRecord)) {
-                page.updateRecord(updatedRecord);
-                writePage(page, page.getPageNumber());
-            } else {
-                throw new DavisBaseException("Update not possible: insufficient space in page.");
-            }
+            Page page = loadPage(existingRecord.get().pageNumber());
+            page.update(List.of(updatedRecord));
+            writePage(page, page.getPageNumber());
         } else {
             throw new DavisBaseException("Record not found for update.");
         }
     }
 
-    public void update(List<T> updatedRecords) throws IOException {
-        for (T updateRecord : updatedRecords) {
+    public void update(List<Cell> updatedRecords) throws IOException {
+        for (Cell updateRecord : updatedRecords) {
             update(updateRecord);
         }
     }
 
-    public Optional<Record> search(int rowId) throws IOException {
-        Page<T> currentPage = findRootPage();
-        while (currentPage != null) {
-            if (currentPage.getPageType() == PageTypes.LEAF.getValue()) {
-                Optional<T> tableRecord = currentPage.getTableRecord(rowId);
-                if (tableRecord.isPresent() && !tableRecord.get().isDeleted()) {
-                    return tableRecord.map(record -> record);
-                }
-                return Optional.empty();
-            } else if (currentPage.getPageType() == PageTypes.INTERIOR.getValue()) {
+    public Optional<Cell> search(int rowId) throws IOException {
+        Page currentPage = findRootPage();
+        while (true) {
+            int pageType = currentPage.getPageType();
+            if (pageType == PageTypes.LEAF.getValue()) {
+                return currentPage.getTableRecord(rowId)
+                        .filter(Cell::exists);
+            }
+
+            if (pageType == PageTypes.INTERIOR.getValue()) {
                 short childPageNo = currentPage.findChildPage(rowId);
                 currentPage = loadPage(childPageNo);
-            } else {
-                throw new DavisBaseException("Invalid page type during search.");
+                continue;
             }
+
+            throw new DavisBaseException("Invalid page type during search.");
         }
-        return Optional.empty();
     }
 
 
-    public List<Record> search(Map<Integer, Character> rowIdConditionMap) throws IOException {
-        List<Record> results = new ArrayList<>();
-        for (long i = 0; i < tableFile.length() / pageSize; i++) {
-            Page<T> page = loadPage((short) i);
-            results.addAll(page.getRecordsMatchingConditions(rowIdConditionMap));
+    public List<Cell> search(List<Integer> rowIds) throws IOException {
+        Collections.sort(rowIds);
+        int minRowId = rowIds.get(0);
+        int maxRowId = rowIds.get(rowIds.size() - 1);
+        List<Cell> result = new ArrayList<>();
+
+        Page currentPage = findRootPage();
+
+        while (currentPage.getPageType() == PageTypes.INTERIOR.getValue()) {
+            short childPageNo = currentPage.findChildPage(minRowId);
+            currentPage = loadPage(childPageNo);
         }
-        return results.stream().filter(record -> !record.isDeleted()).toList();
+
+        while (currentPage.getPageType() == PageTypes.LEAF.getValue()) {
+            List<Cell> allCells = currentPage.getTableCellsInRange(minRowId, maxRowId);
+            for (Cell cell : allCells) {
+                if (rowIds.contains(cell.rowId()) && cell.exists()) {
+                    result.add(cell);
+                }
+            }
+            if (currentPage.getMaxRowId() >= maxRowId) {
+                break;
+            }
+            currentPage = loadPage(currentPage.getSiblingPage());
+        }
+        return result;
     }
+
 
     public void delete(int rowId) throws IOException {
-        Optional<Record> recordOpt = search(rowId);
+        Optional<Cell> recordOpt = search(rowId);
         if (recordOpt.isPresent()) {
-            Page<T> page = loadPage(record.getPageNumber());
-            page.delete(List.of(record.getRowId()));
+            Page page = loadPage(recordOpt.get().pageNumber());
+            page.delete(List.of(recordOpt.get().rowId()));
             writePage(page, page.getPageNumber());
         }
     }
@@ -109,33 +125,35 @@ public class BPlusTree<T extends Record> {
     }
 
     public void truncate() throws IOException {
-        for (long i = 0; i < tableFile.length() / pageSize; i++) {
-            Page<T> page = loadPage((short) i);
-            page.markAllRecordsAsDeleted();
-            writePage(page, page.getPageNumber());
+        for (long pageNo = 0; pageNo < tableFile.length() / pageSize; pageNo++) {
+            Page page = loadPage((short) pageNo);
+            if (page.getPageType() == PageTypes.LEAF.getValue()) {
+                page.truncate();
+                writePage(page, page.getPageNumber());
+            }
         }
     }
 
-    private void writePage(Page<T> page, int pageId) throws IOException {
+    private void writePage(Page page, int pageId) throws IOException {
         tableFile.seek((long) pageId * pageSize);
         tableFile.write(page.serialize());
     }
 
-    private Page<T> loadPage(short pageNo) throws IOException {
+    private Page loadPage(short pageNo) throws IOException {
         tableFile.seek((long) pageNo * pageSize);
         byte[] pageData = new byte[pageSize];
         tableFile.readFully(pageData);
         return Page.deserialize(pageData, pageNo, factory);
     }
 
-    private Page<T> findRootPage() throws IOException {
+    private Page findRootPage() throws IOException {
         short pageNo = (short) (tableFile.length() / pageSize);
-        Page<T> currentPage = loadPage(pageNo);
+        Page currentPage = loadPage(pageNo);
         return loadPage(currentPage.getRootPage());
     }
 
-    private Page<T> findRightmostLeafPage() throws IOException {
-        Page<T> currentPage = findRootPage();
+    private Page findRightmostLeafPage() throws IOException {
+        Page currentPage = findRootPage();
         while (currentPage.getPageType() == PageTypes.INTERIOR.getValue()) {
             short childPageNo = currentPage.getSiblingPage();
             currentPage = loadPage(childPageNo);
@@ -143,7 +161,7 @@ public class BPlusTree<T extends Record> {
         return currentPage;
     }
 
-    private void handleOverflow(Page<T> currentPage, T newRecord) throws IOException {
+    private void handleOverflow(Page currentPage, Cell newRecord) throws IOException {
         if (currentPage.getPageType() == PageTypes.LEAF.getValue()) {
             handleLeafOverflow(currentPage, newRecord);
         } else if (currentPage.getPageType() == PageTypes.INTERIOR.getValue()) {
@@ -153,36 +171,36 @@ public class BPlusTree<T extends Record> {
         }
     }
 
-    private void handleLeafOverflow(Page<T> leafPage, T newRecord) throws IOException {
+    private void handleLeafOverflow(Page leafPage, Cell newRecord) throws IOException {
         int newPageId = leafPage.getPageNumber() + 1;
-        Page<T> newLeafPage = new Page<>(pageSize, newPageId, PageTypes.LEAF.getValue(),
+        Page newLeafPage = new Page(pageSize, newPageId, PageTypes.LEAF.getValue(),
                 leafPage.getRootPage(), leafPage.getParentPage(), (short) 0xFFFF);
         leafPage.insert(List.of(newRecord));
         leafPage.setSiblingPage((short) newPageId);
 
-        T parentRecord = factory.createParentRecord(newRecord.getRowId(), leafPage.getPageNumber());
+        Cell parentRecord = factory.createParentRecord(newRecord.rowId(), leafPage.getPageNumber());
         handleParentPromotion(leafPage, newLeafPage, parentRecord);
         writePage(leafPage, leafPage.getPageNumber());
         writePage(newLeafPage, newPageId);
     }
 
-    private void handleInteriorOverflow(Page<T> interiorPage, T parentRecord) throws IOException {
+    private void handleInteriorOverflow(Page interiorPage, Cell parentRecord) throws IOException {
         int newPageId = interiorPage.getPageNumber() + 1;
-        Page<T> newInteriorPage = new Page<>(pageSize, newPageId, PageTypes.INTERIOR.getValue(),
+        Page newInteriorPage = new Page(pageSize, newPageId, PageTypes.INTERIOR.getValue(),
                 interiorPage.getRootPage(), interiorPage.getParentPage(), interiorPage.getSiblingPage());
         interiorPage.insert(List.of(parentRecord));
         interiorPage.setSiblingPage((short) newPageId);
 
-        T newParentRecord = factory.createParentRecord(parentRecord.getRowId(), interiorPage.getPageNumber());
+        Cell newParentRecord = factory.createParentRecord(parentRecord.rowId(), interiorPage.getPageNumber());
         handleParentPromotion(interiorPage, newInteriorPage, newParentRecord);
         writePage(interiorPage, interiorPage.getPageNumber());
         writePage(newInteriorPage, newPageId);
     }
 
-    private void handleParentPromotion(Page<T> leftPage, Page<T> rightPage, T parentRecord) throws IOException {
+    private void handleParentPromotion(Page leftPage, Page rightPage, Cell parentRecord) throws IOException {
         if (leftPage.getParentPage() == (short) 0xFFFF) {
             int newRootPageId = rightPage.getPageNumber() + 1;
-            Page<T> newRootPage = new Page<>(pageSize, newRootPageId, PageTypes.INTERIOR.getValue(),
+            Page newRootPage = new Page(pageSize, newRootPageId, PageTypes.INTERIOR.getValue(),
                     (short) newRootPageId, (short) 0xFFFF, (short) rightPage.getPageNumber());
 
             newRootPage.insert(List.of(parentRecord));
@@ -191,7 +209,7 @@ public class BPlusTree<T extends Record> {
             writePage(newRootPage, newRootPageId);
             updateAllPagesRootPageId(newRootPageId);
         } else {
-            Page<T> parentPage = loadPage(leftPage.getParentPage());
+            Page parentPage = loadPage(leftPage.getParentPage());
             try {
                 parentPage.insert(List.of(parentRecord));
                 parentPage.setSiblingPage((short) rightPage.getPageNumber());
