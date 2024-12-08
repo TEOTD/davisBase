@@ -19,5 +19,5 @@ public class Constants {
     public static final String DATABASE_VERSION_STRING = "DavisBase Version: " + DATABASE_VERSION;
     public static final String DATABASE_WELCOME_MESSAGE = "Welcome to " + DATABASE_NAME_STRING + "!!";
     public static final String DATABASE_SUPPORTED_COMMANDS = "Type \"help;\" to display supported commands.";
-
+    public static final String DATA_DIR = "./";
 }
