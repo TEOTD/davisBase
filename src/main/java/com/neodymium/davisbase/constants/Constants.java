@@ -31,4 +31,5 @@ public class Constants {
     public static final String TABLE_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_tables" + TABLE_FILE_EXTENSION;
     public static final String COLUMN_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_columns" + TABLE_FILE_EXTENSION;
     public static final Integer PAGE_SIZE = 512;
+    public static final String DATA_DIR = "./";
 }

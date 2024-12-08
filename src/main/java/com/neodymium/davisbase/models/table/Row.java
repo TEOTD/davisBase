@@ -5,6 +5,7 @@ import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.models.Cell;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 
 public record Row(Map<Column, Object> data) {
@@ -39,5 +40,33 @@ public record Row(Map<Column, Object> data) {
             }
         }
         return TableCell.deserialize(buffer.array(), PageTypes.LEAF);
+    }
+
+    /**
+     * Converts a Cell object back to a Row.
+     */
+    public static Row fromCell(Cell cell, Map<String, Column> columnSchema) {
+        Map<Column, Object> rowData = new HashMap<>();
+        ByteBuffer buffer = ByteBuffer.wrap(cell.cellPayload().serialize());
+
+        for (Column column : columnSchema.values()) {
+            switch (column.dataType()) {
+                case NULL -> rowData.put(column, null);
+                case TINYINT, YEAR -> rowData.put(column, buffer.get());
+                case SMALLINT -> rowData.put(column, buffer.getShort());
+                case INT -> rowData.put(column, buffer.getInt());
+                case BIGINT, LONG -> rowData.put(column, buffer.getLong());
+                case FLOAT -> rowData.put(column, buffer.getFloat());
+                case DOUBLE -> rowData.put(column, buffer.getDouble());
+                case DATE, DATETIME -> rowData.put(column, buffer.getLong());
+                case TEXT -> {
+                    byte[] textBytes = new byte[buffer.remaining()];
+                    buffer.get(textBytes);
+                    rowData.put(column, new String(textBytes));
+                }
+                default -> throw new UnsupportedOperationException("Unsupported data type: " + column.dataType());
+            }
+        }
+        return new Row(rowData);
     }
 }

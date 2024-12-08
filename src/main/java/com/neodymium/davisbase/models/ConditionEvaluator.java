@@ -1,5 +1,6 @@
 package com.neodymium.davisbase.models;
 
+import com.neodymium.davisbase.models.table.Row;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 
@@ -7,14 +8,14 @@ import java.util.Map;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ConditionEvaluator {
-    public static boolean evaluateRow(TableRecord record, Map<String, String> conditions) {
+    public static boolean evaluateRow(Row row, Map<String, String> conditions) {
         for (Map.Entry<String, String> entry : conditions.entrySet()) {
             String columnName = entry.getKey();
             String[] conditionParts = entry.getValue().split(" ", 2);
             String operator = conditionParts[0];
             String value = conditionParts[1];
 
-            Object recordValue = record.getValue(columnName);
+            Object recordValue = row.data().get(columnName);
 
             if (!evaluateCondition(recordValue, operator, value)) {
                 return false;
@@ -46,5 +47,3 @@ public class ConditionEvaluator {
         return false;
     }
 }
-
-
