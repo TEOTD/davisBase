@@ -1,9 +1,12 @@
 package com.neodymium.davisbase.models;
 
+import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
+import com.neodymium.davisbase.models.table.TableCell;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.ObjectUtils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -16,8 +19,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class Page {
     private final int pageSize;
-    private final int pageNumber;
-    private final byte pageType;
+    private final short pageNumber;
+    private final PageTypes pageType;
     private final List<Short> cellOffsets = new ArrayList<>();
     private final List<Cell> cells = new ArrayList<>();
     private short rootPage;
@@ -26,7 +29,7 @@ public class Page {
     private short numberOfCells = 0;
     private short contentAreaStartCell = (short) pageSize;
 
-    public Page(int pageSize, int pageNumber, byte pageType, short rootPage, short parentPage, short siblingPage) {
+    public Page(int pageSize, short pageNumber, PageTypes pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageSize = pageSize;
         this.pageNumber = pageNumber;
         this.pageType = pageType;
@@ -35,9 +38,9 @@ public class Page {
         this.siblingPage = siblingPage;
     }
 
-    public static Page deserialize(byte[] data, int pageNumber, CellFactory factory) {
+    public static Page deserialize(byte[] data, short pageNumber) {
         ByteBuffer buffer = ByteBuffer.wrap(data);
-        byte pageType = buffer.get();
+        PageTypes pageType = PageTypes.get(buffer.get());
         buffer.get();
         short numberOfCells = buffer.getShort();
         short contentAreaStartCell = buffer.getShort();
@@ -54,7 +57,7 @@ public class Page {
         List<Cell> cells = new ArrayList<>(numberOfCells);
         for (short offset : cellOffsets) {
             buffer.position(offset);
-            Cell cell = factory.deserialize(buffer.array());
+            Cell cell = TableCell.deserialize(buffer.array(), pageType);
             cells.add(cell);
         }
 
@@ -66,7 +69,7 @@ public class Page {
         return page;
     }
 
-    public void insert(List<Cell> cells) {
+    public void insert(List<Cell> cells, String primaryKey) {
         if (!hasEnoughSpaceForCells(cells)) {
             throw new DavisBaseException("Page full - not enough space for all cells.");
         }
@@ -77,9 +80,11 @@ public class Page {
             contentAreaStartCell -= (short) serializedCell.length;
 
             this.cells.add(cell);
-            cellOffsets.add(new CellOffset(contentAreaStartCell, cell.primaryKey()));
+            cellOffsets.add(new CellOffset(contentAreaStartCell, primaryKey));
         }
-        cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        if (cellOffsets.stream().anyMatch(cellOffset -> !ObjectUtils.isEmpty(cellOffset.primaryKey()))) {
+            cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        }
         this.cellOffsets.clear();
         for (CellOffset cellOffset : cellOffsets) {
             this.cellOffsets.add((short) cellOffset.offset());
@@ -87,7 +92,7 @@ public class Page {
         numberOfCells += (short) cells.size();
     }
 
-    public void update(List<Cell> cells) {
+    public void update(List<Cell> cells, String primaryKey) {
         int filledSpace = this.cells.size() + this.cellOffsets.size() + 16;
         if (!hasEnoughSpaceForUpdatedCells(filledSpace, cells, this.cells)) {
             throw new DavisBaseException("Page full - not enough space for updated cells.");
@@ -99,7 +104,7 @@ public class Page {
 
         for (Cell existingCell : this.cells) {
             Cell cellToInsert = cells.stream()
-                    .filter(cell -> cell.primaryKey().equals(existingCell.primaryKey()))
+                    .filter(cell -> cell.cellHeader().rowId() == (existingCell.cellHeader().rowId()))
                     .findFirst()
                     .orElse(existingCell);
 
@@ -107,10 +112,11 @@ public class Page {
             newContentAreaStart -= (short) serializedCell.length;
 
             newCells.add(cellToInsert);
-            cellOffsets.add(new CellOffset(newContentAreaStart, cellToInsert.primaryKey()));
+            cellOffsets.add(new CellOffset(newContentAreaStart, primaryKey));
         }
-
-        cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        if (cellOffsets.stream().anyMatch(cellOffset -> !ObjectUtils.isEmpty(cellOffset.primaryKey()))) {
+            cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
+        }
         List<Short> newCellOffsets = cellOffsets.stream()
                 .map(offset -> (short) offset.offset())
                 .toList();
@@ -126,7 +132,7 @@ public class Page {
 
     public void delete(List<Integer> rowIds) {
         for (Cell cell : cells) {
-            if (rowIds.contains(cell.rowId())) {
+            if (rowIds.contains(cell.cellHeader().rowId())) {
                 cell.delete();
             }
         }
@@ -140,7 +146,7 @@ public class Page {
 
     public byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(pageSize);
-        buffer.put(pageType);
+        buffer.put(pageType.getValue());
         buffer.put((byte) 0x00);
         buffer.putShort(numberOfCells);
         buffer.putShort(contentAreaStartCell);
@@ -176,7 +182,7 @@ public class Page {
         short requiredSpace = 0;
         for (Cell existingCell : existingCells) {
             Cell cellToInsert = newCells.stream()
-                    .filter(r -> r.primaryKey().equals(existingCell.primaryKey()))
+                    .filter(r -> r.cellHeader().rowId() == existingCell.cellHeader().rowId())
                     .findFirst()
                     .orElse(existingCell);
 
@@ -186,33 +192,33 @@ public class Page {
         return availableSpace >= (16 + 2 * (existingCells.size() + newCells.size()));
     }
 
-    public Optional<Cell> getTableCell(int rowId) {
+    public Optional<Cell> getCell(int rowId) {
         return cells.stream()
-                .filter(cell -> cell.rowId() == rowId)
+                .filter(cell -> cell.cellHeader().rowId() == rowId)
                 .findFirst();
     }
 
     public short findChildPage(int rowId) {
         List<Cell> sortedCells = new ArrayList<>(cells);
-        sortedCells.sort(Comparator.comparing(Cell::rowId).reversed());
+        sortedCells.sort(Comparator.comparing(cell -> ((Cell) cell).cellHeader().rowId()).reversed());
         return sortedCells.stream()
-                .filter(cell -> cell.rowId() < rowId)
+                .filter(cell -> cell.cellHeader().rowId() < rowId)
                 .findFirst()
-                .map(Cell::pageNumber)
+                .map(cell -> cell.cellHeader().leftChildPage())
                 .orElse(siblingPage);
     }
 
     public int getMaxRowId() {
         return cells.stream()
-                .mapToInt(Cell::rowId)
+                .mapToInt(cell -> cell.cellHeader().rowId())
                 .max()
                 .orElseThrow(() -> new IllegalStateException("Table cells are empty"));
     }
 
 
-    public List<Cell> getTableCellsInRange(int minRowId, int maxRowId) {
+    public List<Cell> getCellsInRange(int minRowId, int maxRowId) {
         return cells.stream()
-                .filter(cell -> cell.rowId() >= minRowId && cell.rowId() <= maxRowId)
+                .filter(cell -> cell.cellHeader().rowId() >= minRowId && cell.cellHeader().rowId() <= maxRowId)
                 .toList();
     }
 

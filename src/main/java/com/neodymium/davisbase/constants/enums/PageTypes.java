@@ -3,8 +3,7 @@ package com.neodymium.davisbase.constants.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Arrays;
 
 @Getter
 @AllArgsConstructor
@@ -14,17 +13,12 @@ public enum PageTypes {
     LEAF((byte) 13),
     LEAF_INDEX((byte) 10);
 
-    private static final Map<Byte, PageTypes> pageTypeLookup = new HashMap<>();
-
-    static {
-        for (PageTypes pageTypes : PageTypes.values())
-            pageTypeLookup.put(pageTypes.getValue(), pageTypes);
-    }
-
     private final byte value;
 
     public static PageTypes get(byte value) {
-        return pageTypeLookup.get(value);
+        return Arrays.stream(PageTypes.values())
+                .filter(v -> v.getValue() == value)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("received invalid byte for page type"));
     }
-
 }
