@@ -1,8 +1,12 @@
 package com.neodymium.davisbase.models;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+
 import java.util.HashMap;
 import java.util.Map;
 
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ConditionParser {
     public static Map<String, String> parseCondition(String condition) {
         Map<String, String> conditionMap = new HashMap<>();

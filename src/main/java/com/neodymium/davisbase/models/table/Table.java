@@ -6,10 +6,8 @@ import com.neodymium.davisbase.error.DavisBaseException;
 import com.neodymium.davisbase.models.Cell;
 import com.neodymium.davisbase.models.ConditionEvaluator;
 import com.neodymium.davisbase.models.ConditionParser;
-import com.neodymium.davisbase.models.TableCellFactory;
 import com.neodymium.davisbase.models.index.Index;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -24,13 +22,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.neodymium.davisbase.constants.Constants.PAGE_SIZE;
+import static com.neodymium.davisbase.constants.Constants.TABLE_DIRECTORY;
 
-/**
- * Represents a table in DavisBase.
- */
-@Getter
-@Setter
+@Data
 @Slf4j
 public class Table {
     private String tableName;
@@ -54,33 +48,32 @@ public class Table {
             dataTypes.add(DataTypes.get(Byte.parseByte(parts[1])));
             if (parts.length > 2) {
                 constraints.put(parts[0], String.join(" ", Arrays.copyOfRange(parts, 2, parts.length)));
-                // Automatically create an index for PRIMARY KEY or UNIQUE columns
                 if (constraints.get(parts[0]).contains("PRIMARY KEY") || constraints.get(parts[0]).contains("UNIQUE")) {
                     indexes.put(parts[0], new Index(parts[0]));
                 }
             }
         }
 
-        this.tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
+        this.tableFile = new File(TABLE_DIRECTORY + File.separator + tableName + ".tbl");
         if (!tableFile.exists()) {
             initializeTableFile();
         }
 
-        this.bPlusTree = new BPlusTree(PAGE_SIZE, new RandomAccessFile(tableFile, "rw"), new TableCellFactory());
+        this.bPlusTree = new BPlusTree(new RandomAccessFile(tableFile, "rw"));
     }
 
     /**
      * Checks if a table exists.
      */
     public static boolean exists(String tableName) {
-        return new File(Constants.DATA_DIR + tableName + ".tbl").exists();
+        return new File(TABLE_DIRECTORY + File.separator + tableName + ".tbl").exists();
     }
 
     /**
      * Deletes or drop a table and its metadata.
      */
     public static void drop(String tableName) throws DavisBaseException, IOException {
-        File file = new File(Constants.DATA_DIR + tableName + ".tbl");
+        File file = new File(TABLE_DIRECTORY + File.separator + tableName + ".tbl");
         if (!file.exists() || !file.delete()) {
             throw new DavisBaseException("Failed to delete table '" + tableName + "'.");
         }
@@ -92,12 +85,12 @@ public class Table {
      * Removes table metadata from the system catalog.
      */
     private static void removeFromMetadata(String tableName) throws IOException {
-        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
+        File metadataFile = new File(TABLE_DIRECTORY + File.separator + "davisbase_tables.tbl");
         List<String> lines = Files.readAllLines(metadataFile.toPath());
         lines.removeIf(line -> line.equalsIgnoreCase(tableName));
         Files.write(metadataFile.toPath(), lines);
 
-        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
+        File columnsFile = new File(TABLE_DIRECTORY + File.separator + "davisbase_columns.tbl");
         lines = Files.readAllLines(columnsFile.toPath());
         lines.removeIf(line -> line.startsWith(tableName + "|"));
         Files.write(columnsFile.toPath(), lines);
@@ -216,7 +209,6 @@ public class Table {
                     }
                 }
 
-                // Mark as deleted in the B+ Tree
                 bPlusTree.delete(record.toCell());
                 deletedCount++;
             }
@@ -254,7 +246,7 @@ public class Table {
      */
     private void initializeTableFile() throws IOException {
         log.info("Initializing table file for '{}'.", tableName);
-        bPlusTree.create(PAGE_SIZE);
+        bPlusTree.create();
     }
 
     /**
