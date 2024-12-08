@@ -12,8 +12,6 @@ public class QueryProcessor {
     public final DDLProcessor ddlProcessor;
     public final DMLProcessor dmlProcessor;
     public final DQLProcessor dqlProcessor;
-    public final TCLProcessor tclProcessor;
-    public final VDLProcessor vdlProcessor;
 
     public void process(String command) {
         //todo: make generic function to process the command

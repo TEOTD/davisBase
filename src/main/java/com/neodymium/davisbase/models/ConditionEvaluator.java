@@ -1,7 +1,11 @@
 package com.neodymium.davisbase.models;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+
 import java.util.Map;
 
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ConditionEvaluator {
     public static boolean evaluateRow(TableRecord record, Map<String, String> conditions) {
         for (Map.Entry<String, String> entry : conditions.entrySet()) {
@@ -20,22 +24,22 @@ public class ConditionEvaluator {
     }
 
     private static boolean evaluateCondition(Object recordValue, String operator, String value) {
-        if (recordValue instanceof Integer) {
+        if (recordValue instanceof Integer integerValue) {
             int intValue = Integer.parseInt(value);
             return switch (operator) {
-                case "=" -> ((Integer) recordValue).equals(intValue);
-                case "!=" -> !((Integer) recordValue).equals(intValue);
-                case "<" -> ((Integer) recordValue) < intValue;
-                case ">" -> ((Integer) recordValue) > intValue;
-                case "<=" -> ((Integer) recordValue) <= intValue;
-                case ">=" -> ((Integer) recordValue) >= intValue;
+                case "=" -> integerValue.equals(intValue);
+                case "!=" -> !integerValue.equals(intValue);
+                case "<" -> integerValue < intValue;
+                case ">" -> integerValue > intValue;
+                case "<=" -> integerValue <= intValue;
+                case ">=" -> integerValue >= intValue;
                 default -> false;
             };
-        } else if (recordValue instanceof String) {
+        } else if (recordValue instanceof String stringValue) {
             return switch (operator) {
-                case "=" -> recordValue.equals(value);
-                case "!=" -> !recordValue.equals(value);
-                case "LIKE" -> ((String) recordValue).contains(value.replace("%", ""));
+                case "=" -> stringValue.equals(value);
+                case "!=" -> !stringValue.equals(value);
+                case "LIKE" -> stringValue.contains(value.replace("%", ""));
                 default -> false;
             };
         }

@@ -3,144 +3,37 @@ package com.neodymium.davisbase.constants.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Arrays;
 
 @Getter
 @AllArgsConstructor
 public enum DataTypes {
-    NULL((byte) 0) {
-        @Override
-        public String toString() {
-            return "NULL";
-        }
-    },
-    TINYINT((byte) 1) {
-        @Override
-        public String toString() {
-            return "TINYINT";
-        }
-    },
-    SMALLINT((byte) 2) {
-        @Override
-        public String toString() {
-            return "SMALLINT";
-        }
-    },
-    INT((byte) 3) {
-        @Override
-        public String toString() {
-            return "INT";
-        }
-    },
-    BIGINT((byte) 4) {
-        @Override
-        public String toString() {
-            return "BIGINT";
-        }
-    },
-    FLOAT((byte) 5) {
-        @Override
-        public String toString() {
-            return "FLOAT";
-        }
-    },
-    DOUBLE((byte) 6) {
-        @Override
-        public String toString() {
-            return "DOUBLE";
-        }
-    },
-    YEAR((byte) 8) {
-        @Override
-        public String toString() {
-            return "YEAR";
-        }
-    },
-    TIME((byte) 9) {
-        @Override
-        public String toString() {
-            return "TIME";
-        }
-    },
-    DATETIME((byte) 10) {
-        @Override
-        public String toString() {
-            return "DATETIME";
-        }
-    },
-    DATE((byte) 11) {
-        @Override
-        public String toString() {
-            return "DATE";
-        }
-    },
-    TEXT((byte) 12) {
-        @Override
-        public String toString() {
-            return "TEXT";
-        }
-    };
+    NULL(0, (byte) 0, "NULL", 0x00),
+    TINYINT(1, (byte) 1, "TINYINT", 0x01),
+    SMALLINT(2, (byte) 2, "SMALLINT", 0x02),
+    INT(4, (byte) 4, "INT", 0x03),
+    BIGINT(8, (byte) 8, "BIGINT", 0x04),
+    LONG(8, (byte) 8, "LONG", 0x04),
+    FLOAT(4, (byte) 4, "FLOAT", 0x05),
+    DOUBLE(8, (byte) 8, "DOUBLE", 0x06),
+    YEAR(1, (byte) 1, "YEAR", 0x08),
+    TIME(4, (byte) 4, "TIME", 0x09),
+    DATETIME(8, (byte) 8, "DATETIME", 0x0A),
+    DATE(8, (byte) 8, "DATE", 0x0B),
+    TEXT(-1, (byte) -1, "TEXT", 0x0C);
 
-    private static final Map<Byte, DataTypes> dataTypeLookup = new HashMap<>();
-    private static final Map<Byte, Integer> dataTypeSizeLookup = new HashMap<>();
-    private static final Map<String, DataTypes> dataTypeStringLookup = new HashMap<>();
-    private static final Map<DataTypes, Integer> dataTypePrintOffset = new EnumMap<>(DataTypes.class);
+    private final int size;
+    private final byte sizeInBytes;
+    private final String typeName;
+    private final int typeCode;
 
-
-    static {
-        for (DataTypes s : DataTypes.values()) {
-            dataTypeLookup.put(s.getValue(), s);
-            dataTypeStringLookup.put(s.toString(), s);
-
-            if (s == DataTypes.TINYINT || s == DataTypes.YEAR) {
-                dataTypeSizeLookup.put(s.getValue(), 1);
-                dataTypePrintOffset.put(s, 6);
-            } else if (s == DataTypes.SMALLINT) {
-                dataTypeSizeLookup.put(s.getValue(), 2);
-                dataTypePrintOffset.put(s, 8);
-            } else if (s == DataTypes.INT || s == DataTypes.FLOAT || s == DataTypes.TIME) {
-                dataTypeSizeLookup.put(s.getValue(), 4);
-                dataTypePrintOffset.put(s, 10);
-            } else if (s == DataTypes.BIGINT || s == DataTypes.DOUBLE
-                    || s == DataTypes.DATETIME || s == DataTypes.DATE) {
-                dataTypeSizeLookup.put(s.getValue(), 8);
-                dataTypePrintOffset.put(s, 25);
-            } else if (s == DataTypes.TEXT) {
-                dataTypePrintOffset.put(s, 25);
-            } else if (s == DataTypes.NULL) {
-                dataTypeSizeLookup.put(s.getValue(), 0);
-                dataTypePrintOffset.put(s, 6);
-            }
+    public static DataTypes getFromTypeCode(int dataTypeId) {
+        if (dataTypeId < 0x0C) {
+            return Arrays.stream(DataTypes.values())
+                    .filter(type -> type.getTypeCode() == dataTypeId)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid data type code: " + dataTypeId));
         }
+        return DataTypes.TEXT;
     }
-
-    private final byte value;
-
-    public static DataTypes get(byte value) {
-        if (value > 12)
-            return DataTypes.TEXT;
-        return dataTypeLookup.get(value);
-    }
-
-    public static DataTypes get(String text) {
-        return dataTypeStringLookup.get(text);
-    }
-
-    public static int getLength(DataTypes type) {
-        return getLength(type.getValue());
-    }
-
-    public static int getLength(byte value) {
-        if (get(value) != DataTypes.TEXT)
-            return dataTypeSizeLookup.get(value);
-        else
-            return value - 12;
-    }
-
-    public int getPrintOffset() {
-        return dataTypePrintOffset.get(get(this.value));
-    }
-
 }

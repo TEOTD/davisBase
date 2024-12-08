@@ -1,15 +1,11 @@
 package com.neodymium.davisbase.models;
 
 public interface Cell {
+    CellHeader cellHeader();
+
+    CellPayload cellPayload();
+
     byte[] serialize();
-
-    int rowId();
-
-    int size();
-
-    short pageNumber();
-
-    String primaryKey();
 
     void delete();
 

@@ -3,6 +3,8 @@ package com.neodymium.davisbase.constants;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.io.File;
+
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class Constants {
     //Add all hardcoded constant properties here.
@@ -19,5 +21,14 @@ public class Constants {
     public static final String DATABASE_VERSION_STRING = "DavisBase Version: " + DATABASE_VERSION;
     public static final String DATABASE_WELCOME_MESSAGE = "Welcome to " + DATABASE_NAME_STRING + "!!";
     public static final String DATABASE_SUPPORTED_COMMANDS = "Type \"help;\" to display supported commands.";
-    public static final String DATA_DIR = "./";
+
+    //directories
+    public static final String CATALOG_DIRECTORY = "catalogs";
+    public static final String TABLE_FILE_EXTENSION = ".tbl";
+    public static final String INDEX_FILE_EXTENSION = ".ndx";
+    public static final String TABLE_DIRECTORY = "tables";
+    public static final String INDEX_DIRECTORY = "indexes";
+    public static final String TABLE_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_tables" + TABLE_FILE_EXTENSION;
+    public static final String COLUMN_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_columns" + TABLE_FILE_EXTENSION;
+    public static final Integer PAGE_SIZE = 512;
 }

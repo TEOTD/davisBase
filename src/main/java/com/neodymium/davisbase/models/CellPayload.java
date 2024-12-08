@@ -1,10 +1,11 @@
 package com.neodymium.davisbase.models;
 
-public interface Record {
+public interface CellPayload {
+    byte[] serialize();
+
     void delete();
 
     boolean exists();
 
-    byte[] serialize();
-
+    int getSize();
 }
