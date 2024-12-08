@@ -4,4 +4,7 @@ public interface Record {
     void delete();
 
     boolean exists();
+
+    byte[] serialize();
+
 }

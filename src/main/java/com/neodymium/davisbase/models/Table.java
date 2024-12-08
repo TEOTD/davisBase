@@ -1,183 +1,340 @@
 package com.neodymium.davisbase.models;
 
+import com.neodymium.davisbase.constants.Constants;
+import com.neodymium.davisbase.constants.enums.DataTypes;
+import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.util.*;
 
+/**
+ * Represents a table in DavisBase.
+ */
+@Getter
+@Setter
+@Slf4j
 public class Table {
-    public static final int PAGE_SIZE = 512;
-    private final static String TABLES_META_FILE = "data/davisbase_tables.tbl";
-    private final static String COLUMNS_META_FILE = "data/davisbase_columns.tbl";
-    private final String tableName;
-    private final String tableFilePath;
-    private final String indexFilePath;
-    private final BPlusTree bPlusTree;
-    private final BTree<Integer> primaryKeyIndex;
+    private String tableName;
+    private List<String> columnNames;
+    private List<DataTypes> dataTypes;
+    private Map<String, String> constraints; // Column constraints (e.g., PRIMARY KEY, NOT NULL)
+    private Map<String, Index> indexes;
+    private BPlusTree bPlusTree;
+    private File tableFile;
+    private static final int PAGE_SIZE = 512;
 
-    public Table(String tableName) throws IOException {
+    public Table(String tableName, String[] schema) throws IOException {
         this.tableName = tableName;
-        this.tableFilePath = "data/" + tableName + ".tbl";
-        this.indexFilePath = "data/" + tableName + "_index.ndx";
+        this.columnNames = new ArrayList<>();
+        this.dataTypes = new ArrayList<>();
+        this.constraints = new HashMap<>();
+        this.indexes = new HashMap<>();
 
-        File tableFile = new File(tableFilePath);
-        File indexFile = new File(indexFilePath);
-
-        if (!tableFile.exists()) {
-            initializeTableFile(tableFile);
-        }
-
-        if (!indexFile.exists()) {
-            initializeIndexFile(indexFile);
-        }
-
-        this.bPlusTree = new BPlusTree(tableFilePath, PAGE_SIZE);
-        this.primaryKeyIndex = new BPlusTree(indexFilePath, PAGE_SIZE);
-    }
-
-    /**
-     * Initializes a new table file with an empty root page and updates metadata files.
-     */
-
-    private void initializeTableFile(File tableFile) throws IOException {
-        try (RandomAccessFile randomAccessFile = new RandomAccessFile(tableFile, "rw")) {
-            randomAccessFile.setLength(PAGE_SIZE);
-            byte[] emptyPage = new byte[PAGE_SIZE];
-            randomAccessFile.write(emptyPage);
-        }
-        registerTableInMetaData();
-    }
-
-    /**
-     * Initializes a new index file with an empty root page.
-     */
-    private void initializeIndexFile(File indexFile) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(indexFile, "rw")) {
-            raf.setLength(PAGE_SIZE);
-            raf.seek(0);
-            raf.writeByte(0x05); // Internal page type
-            raf.writeShort(0);   // Number of keys
-            raf.writeShort(PAGE_SIZE); // Starting position of free space
-            raf.writeInt(0xFFFFFFFF); // No right sibling
-        }
-    }
-
-    /**
-     * Registers the table in the `davisbase_tables.tbl` and `davisbase_columns.tbl` metadata files.
-     */
-    private void registerTableInMetaData() throws IOException {
-        try (RandomAccessFile tablesMeta = new RandomAccessFile(TABLES_META_FILE, "rw")) {
-            int rowId = getNextRowId(tablesMeta);
-
-            String[] values = {String.valueOf(rowId), tableName};
-            insertIntoMetaTable(tablesMeta, TABLES_META_FILE, values);
-        }
-    }
-
-    /**
-     * Retrieves the next available row ID in the metadata file.
-     */
-    private int getNextRowId(RandomAccessFile file) throws IOException {
-        int numPages = (int) (file.length() / PAGE_SIZE);
-        for (int page = numPages; page >= 1; page--) {
-            file.seek((long) (page - 1) * PAGE_SIZE);
-            if (file.readByte() == 0x0D) {
-                int[] keys = BPlusTree.getKeyArray(file, page);
-                return keys[keys.length - 1] + 1;
-            }
-        }
-        return 1;
-    }
-
-    /**
-     * Inserts a record into the table and updates the primary key index.
-     */
-    public void insert(TableCell record) throws IOException {
-        if (!bPlusTree.insert(record)) {
-            throw new DavisBaseException("Failed to insert record into table.");
-        }
-
-        // Update the primary key index
-        int primaryKey = Integer.parseInt(record.primaryKey());
-        primaryKeyIndex.insert(primaryKey, record.rowId());
-    }
-
-    /**
-     * Retrieves records matching the given condition.
-     */
-    public List<TableCell> select(String condition) throws IOException {
-        return bPlusTree.search(condition);
-    }
-
-    /**
-     * Deletes records matching the given condition.
-     */
-    public void delete(String condition) throws IOException {
-        List<TableCell> records = bPlusTree.search(condition);
-        for (TableCell record : records) {
-            bPlusTree.delete(record.rowId());
-
-            // Remove the primary key from the index
-            int primaryKey = Integer.parseInt(record.primaryKey());
-            primaryKeyIndex.delete(primaryKey);
-        }
-    }
-
-    /**
-     * Inserts metadata into a specified metadata table.
-     */
-    private void insertIntoMetaTable(RandomAccessFile file, String tableName, String[] values) throws IOException {
-        String[] dataTypes = {"INT", "TEXT"};
-        byte[] dataTypeCodes = {0x06, (byte) (0x0C + values[1].length())};
-        int payloadSize = calculatePayloadSize(dataTypes, values);
-
-        int page = BPlusTree.searchKeyPage(file, Integer.parseInt(values[0]));
-        if (page == 0) page = 1;
-
-        int offset = BPlusTree.checkLeafSpace(file, page, payloadSize);
-        if (offset != -1) {
-            BPlusTree.insertLeafCell(file, page, offset, payloadSize, Integer.parseInt(values[0]), dataTypeCodes, values);
-        } else {
-            BPlusTree.splitLeaf(file, page);
-            insertIntoMetaTable(file, tableName, values);
-        }
-    }
-
-    /**
-     * Calculates the payload size for the given data types and values.
-     */
-    private int calculatePayloadSize(String[] dataTypes, String[] values) {
-        int size = dataTypes.length;
-        for (int i = 0; i < dataTypes.length; i++) {
-            size += BPlusTree.calculateFieldLength(dataTypes[i], values[i]);
-        }
-        return size;
-    }
-
-    /**
-     * Retrieves the schema of a table from `davisbase_columns.tbl`.
-     */
-    public List<String[]> getTableSchema() throws IOException {
-        List<String[]> schema = new ArrayList<>();
-        try (RandomAccessFile columnsMeta = new RandomAccessFile(COLUMNS_META_FILE, "rw")) {
-            int numPages = (int) (columnsMeta.length() / PAGE_SIZE);
-            for (int page = 1; page <= numPages; page++) {
-                columnsMeta.seek((long) (page - 1) * PAGE_SIZE);
-                if (columnsMeta.readByte() == 0x0D) {
-                    int numCells = BPlusTree.getCellNumber(columnsMeta, page);
-                    for (int i = 0; i < numCells; i++) {
-                        long cellLocation = BPlusTree.getCellLoc(columnsMeta, page, i);
-                        String[] values = BPlusTree.retrieveValues(columnsMeta, cellLocation);
-                        if (values[1].equals(tableName)) {
-                            schema.add(values);
-                        }
-                    }
+        for (String columnDef : schema) {
+            String[] parts = columnDef.trim().split("\\s+");
+            columnNames.add(parts[0]);
+            dataTypes.add(DataTypes.get(Byte.parseByte(parts[1])));
+            if (parts.length > 2) {
+                constraints.put(parts[0], String.join(" ", Arrays.copyOfRange(parts, 2, parts.length)));
+                // Automatically create an index for PRIMARY KEY or UNIQUE columns
+                if (constraints.get(parts[0]).contains("PRIMARY KEY") || constraints.get(parts[0]).contains("UNIQUE")) {
+                    indexes.put(parts[0], new Index(parts[0]));
                 }
             }
         }
-        return schema;
+
+        this.tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
+        if (!tableFile.exists()) {
+            initializeTableFile();
+        }
+
+        this.bPlusTree = new BPlusTree(PAGE_SIZE, new RandomAccessFile(tableFile, "rw"), new TableCellFactory());
+    }
+
+    /**
+     * Checks if a table exists.
+     */
+    public static boolean exists(String tableName) {
+        return new File(Constants.DATA_DIR + tableName + ".tbl").exists();
+    }
+
+    /**
+     * Creates a new table file with metadata.
+     */
+    public void create() throws IOException, DavisBaseException {
+        if (tableFile.exists()) {
+            throw new DavisBaseException("Table '" + tableName + "' already exists.");
+        }
+
+        if (!tableFile.createNewFile()) {
+            throw new DavisBaseException("Failed to create table file: " + tableName);
+        }
+
+        log.info("Table '{}' created successfully.", tableName);
+        initializeTableFile();
+        addToMetadata();
+    }
+
+    /**
+     * Deletes or drop a table and its metadata.
+     */
+    public static void drop(String tableName) throws DavisBaseException, IOException {
+        File file = new File(Constants.DATA_DIR + tableName + ".tbl");
+        if (!file.exists() || !file.delete()) {
+            throw new DavisBaseException("Failed to delete table '" + tableName + "'.");
+        }
+        removeFromMetadata(tableName);
+        log.info("Table '{}' deleted successfully.", tableName);
+    }
+
+    /**
+     * Inserts a new record into the table.
+     */
+    public void insert(Object[] values) throws IOException, DavisBaseException {
+        if (values.length != columnNames.size()) {
+            throw new DavisBaseException("Insert values do not match table schema.");
+        }
+
+        int rowId = generateRowId();
+        TableRecord record = new TableRecord(
+                new byte[1],
+                rowId,
+                columnNames,       // Include column names
+                dataTypes,         // Include data types
+                convertToBytes(values) // Serialized values
+        );
+        bPlusTree.insert(record.toCell());
+        // Update indexes
+        for (int i = 0; i < columnNames.size(); i++) {
+            String column = columnNames.get(i);
+            Index index = indexes.get(column);
+            if (index != null) {
+                index.insert(values[i], rowId);
+            }
+        }
+        log.info("Record inserted into table '{}'.", tableName);
+    }
+
+    /**
+     * Updates records matching a condition.
+     */
+    public int update(String condition, Map<String, Object> updates) throws IOException, DavisBaseException {
+        log.info("Updating records in '{}' with condition: {} and updates: {}", tableName, condition, updates);
+
+        Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
+        List<Cell> matchingCells = bPlusTree.search(new ArrayList<>());
+
+        int updatedCount = 0;
+        for (Cell cell : matchingCells) {
+            TableRecord record = TableRecord.fromCell(cell);
+            if (ConditionEvaluator.evaluateRow(record, parsedConditions)) {
+                // Remove old values from indexes
+                for (int i = 0; i < columnNames.size(); i++) {
+                    String column = columnNames.get(i);
+                    Index index = indexes.get(column);
+                    if (index != null) {
+                        index.delete(record.getValue(column), record.getRowId());
+                    }
+                }
+
+                // Apply updates
+                for (Map.Entry<String, Object> update : updates.entrySet()) {
+                    record.setValue(update.getKey(), update.getValue());
+                }
+
+                // Add new values to indexes
+                for (int i = 0; i < columnNames.size(); i++) {
+                    String column = columnNames.get(i);
+                    Index index = indexes.get(column);
+                    if (index != null) {
+                        index.insert(record.getValue(column), record.getRowId());
+                    }
+                }
+
+                // Update the record in the B+ Tree
+                bPlusTree.update(record.toCell());
+                updatedCount++;
+            }
+        }
+
+        log.info("{} records updated in '{}'.", updatedCount, tableName);
+        return updatedCount;
+    }
+
+
+    /**
+     * Deletes records matching a condition.
+     */
+    public int delete(String condition) throws IOException, DavisBaseException {
+        log.info("Deleting records from '{}' with condition: {}", tableName, condition);
+
+        Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
+        List<Cell> matchingCells = bPlusTree.search(new ArrayList<>());
+
+        int deletedCount = 0;
+        for (Cell cell : matchingCells) {
+            TableRecord record = TableRecord.fromCell(cell);
+            if (ConditionEvaluator.evaluateRow(record, parsedConditions)) {
+                // Remove from indexes
+                for (int i = 0; i < columnNames.size(); i++) {
+                    String column = columnNames.get(i);
+                    Index index = indexes.get(column);
+                    if (index != null) {
+                        index.delete(record.getValue(column), record.getRowId());
+                    }
+                }
+
+                // Mark as deleted in the B+ Tree
+                bPlusTree.delete(record.toCell());
+                deletedCount++;
+            }
+        }
+
+        log.info("{} records deleted from '{}'.", deletedCount, tableName);
+        return deletedCount;
+    }
+
+
+    /**
+     * Selects records matching a condition.
+     */
+    public List<Map<String, Object>> select(List<String> columns, String condition) throws IOException, DavisBaseException {
+        log.info("Selecting columns '{}' from '{}' with condition: {}", columns, tableName, condition);
+
+        Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
+        List<Cell> matchingCells = bPlusTree.search(new ArrayList<>());
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Cell cell : matchingCells) {
+            TableRecord record = TableRecord.fromCell(cell);
+            if (ConditionEvaluator.evaluateRow(record, parsedConditions)) {
+                Map<String, Object> row = new HashMap<>();
+                for (String column : columns) {
+                    row.put(column, record.getValue(column));
+                }
+                result.add(row);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Initializes the table file structure.
+     */
+    private void initializeTableFile() throws IOException {
+        log.info("Initializing table file for '{}'.", tableName);
+        bPlusTree.create(PAGE_SIZE);
+    }
+
+    /**
+     * Adds table metadata to the system catalog.
+     */
+    private void addToMetadata() throws IOException {
+        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
+        if (!metadataFile.exists()) {
+            metadataFile.createNewFile();
+        }
+
+        try (FileWriter writer = new FileWriter(metadataFile, true)) {
+            writer.write(tableName + "\n");
+        }
+
+        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
+        if (!columnsFile.exists()) {
+            columnsFile.createNewFile();
+        }
+
+        try (FileWriter writer = new FileWriter(columnsFile, true)) {
+            for (int i = 0; i < columnNames.size(); i++) {
+                writer.write(tableName + "|" + columnNames.get(i) + "|" + dataTypes.get(i) + "\n");
+            }
+        }
+    }
+
+    /**
+     * Removes table metadata from the system catalog.
+     */
+    private static void removeFromMetadata(String tableName) throws IOException {
+        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
+        List<String> lines = Files.readAllLines(metadataFile.toPath());
+        lines.removeIf(line -> line.equalsIgnoreCase(tableName));
+        Files.write(metadataFile.toPath(), lines);
+
+        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
+        lines = Files.readAllLines(columnsFile.toPath());
+        lines.removeIf(line -> line.startsWith(tableName + "|"));
+        Files.write(columnsFile.toPath(), lines);
+    }
+
+    /**
+     * Converts values to byte arrays.
+     */
+    private List<byte[]> convertToBytes(Object[] values) {
+        List<byte[]> result = new ArrayList<>();
+        for (int i = 0; i < values.length; i++) {
+            DataTypes type = dataTypes.get(i);
+            result.add(serializeValue(type, values[i]));
+        }
+        return result;
+    }
+
+    private byte[] serializeValue(DataTypes type, Object value) {
+        ByteBuffer buffer = ByteBuffer.allocate(DataTypes.getLength(type));
+
+        switch (type) {
+            case NULL:
+                // No bytes needed for NULL
+                return new byte[0];
+            case TINYINT:
+                buffer.put(((Number) value).byteValue());
+                break;
+            case SMALLINT:
+                buffer.putShort(((Number) value).shortValue());
+                break;
+            case INT:
+                buffer.putInt(((Number) value).intValue());
+                break;
+            case BIGINT:
+                buffer.putLong(((Number) value).longValue());
+                break;
+            case FLOAT:
+                buffer.putFloat(((Number) value).floatValue());
+                break;
+            case DOUBLE:
+                buffer.putDouble(((Number) value).doubleValue());
+                break;
+            case YEAR:
+                buffer.putShort(((Number) value).shortValue()); // Assuming YEAR as a 2-byte value
+                break;
+            case TIME:
+            case DATETIME:
+            case DATE:
+                buffer.putLong(((Number) value).longValue()); // Assuming these are stored as timestamps
+                break;
+            case TEXT:
+                return ((String) value).getBytes();
+            default:
+                throw new IllegalArgumentException("Unsupported data type: " + type);
+        }
+
+        return buffer.array();
+    }
+
+
+
+    /**
+     * Generates a unique row ID.
+     */
+    private int generateRowId() {
+        return (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
     }
 }
