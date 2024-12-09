@@ -3,70 +3,84 @@ package com.neodymium.davisbase.models.table;
 import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.models.Cell;
+import com.neodymium.davisbase.models.CellHeader;
+import com.neodymium.davisbase.models.CellPayload;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-public record Row(Map<Column, Object> data) {
-    private static int estimateSize(Column column, Object value) {
-        return DataTypes.TEXT.equals(column.dataType()) ? String.valueOf(value).length() : column.dataType().getSize();
+public record Row(int id, Map<Column, Object> data) {
+    private static int estimateSize(Column column) {
+        return column.dataType().getSize();
     }
 
-    public Cell cellFromRow() {
-        int estimatedSize = data.entrySet().stream()
-                .mapToInt(entry -> estimateSize(entry.getKey(), entry.getValue()))
-                .sum();
-        ByteBuffer buffer = ByteBuffer.allocate(estimatedSize);
-        for (Map.Entry<Column, Object> entry : data.entrySet()) {
-            Column column = entry.getKey();
-            Object value = entry.getValue();
-
-            switch (column.dataType()) {
-                case NULL -> buffer.put((byte) 0);
-                case TINYINT, YEAR -> buffer.put((byte) value);
-                case SMALLINT -> buffer.putShort((short) value);
-                case INT -> buffer.putInt((Integer) value);
-                case BIGINT, LONG -> buffer.putLong((Long) value);
-                case FLOAT -> buffer.putFloat((Float) value);
-                case DOUBLE -> buffer.putDouble((Double) value);
-                case DATE, DATETIME -> buffer.putLong((long) value);
-                case TEXT -> {
-                    String strValue = (String) value;
-                    buffer.put(strValue.getBytes());
-                }
-                default -> throw new UnsupportedOperationException(
-                        "Unsupported data type: " + column.dataType());
-            }
-        }
-        return TableCell.deserialize(buffer.array(), PageTypes.LEAF);
-    }
-
-    /**
-     * Converts a Cell object back to a Row.
-     */
     public static Row fromCell(Cell cell, Map<String, Column> columnSchema) {
         Map<Column, Object> rowData = new HashMap<>();
         ByteBuffer buffer = ByteBuffer.wrap(cell.cellPayload().serialize());
-
         for (Column column : columnSchema.values()) {
             switch (column.dataType()) {
                 case NULL -> rowData.put(column, null);
                 case TINYINT, YEAR -> rowData.put(column, buffer.get());
                 case SMALLINT -> rowData.put(column, buffer.getShort());
                 case INT -> rowData.put(column, buffer.getInt());
-                case BIGINT, LONG -> rowData.put(column, buffer.getLong());
+                case BIGINT, LONG, DATE, DATETIME -> rowData.put(column, buffer.getLong());
                 case FLOAT -> rowData.put(column, buffer.getFloat());
                 case DOUBLE -> rowData.put(column, buffer.getDouble());
-                case DATE, DATETIME -> rowData.put(column, buffer.getLong());
-                case TEXT -> {
-                    byte[] textBytes = new byte[buffer.remaining()];
+                default -> {
+                    byte[] textBytes = new byte[column.dataType().getSize()];
                     buffer.get(textBytes);
                     rowData.put(column, new String(textBytes));
                 }
-                default -> throw new UnsupportedOperationException("Unsupported data type: " + column.dataType());
             }
         }
-        return new Row(rowData);
+        return new Row(cell.cellHeader().rowId(), rowData);
     }
+
+    public Cell cellFromRow() {
+        int estimatedSize = data.keySet().stream()
+                .mapToInt(Row::estimateSize)
+                .sum();
+
+        int noOfColumns = data.size();
+        List<DataTypes> dataTypes = data.keySet().stream()
+                .map(Column::dataType)
+                .toList();
+
+        ByteBuffer bodyBuffer = ByteBuffer.allocate(estimatedSize);
+
+        for (Map.Entry<Column, Object> entry : data.entrySet()) {
+            Column column = entry.getKey();
+            Object value = entry.getValue();
+
+            switch (column.dataType()) {
+                case NULL -> bodyBuffer.put((byte) 0);
+                case TINYINT, YEAR -> bodyBuffer.put(((Number) value).byteValue());
+                case SMALLINT -> bodyBuffer.putShort(((Number) value).shortValue());
+                case INT -> bodyBuffer.putInt((Integer) value);
+                case BIGINT, LONG, DATE, DATETIME -> bodyBuffer.putLong(((Number) value).longValue());
+                case FLOAT -> bodyBuffer.putFloat((Float) value);
+                case DOUBLE -> bodyBuffer.putDouble((Double) value);
+                default -> {
+                    String strValue = (String) value;
+                    bodyBuffer.put(strValue.getBytes());
+                }
+            }
+        }
+
+        byte[] body = bodyBuffer.array();
+
+        CellHeader cellHeader = new TableLeafCellHeader((short) estimatedSize, id);
+        CellPayload cellPayload = new TableCellPayload((byte) 0, (byte) noOfColumns, dataTypes, body);
+
+        byte[] cellHeaderInBytes = cellHeader.serialize();
+        byte[] cellPayloadInBytes = cellPayload.serialize();
+        ByteBuffer payloadBuffer = ByteBuffer.allocate(cellHeaderInBytes.length + cellPayloadInBytes.length);
+        payloadBuffer.put(cellHeaderInBytes);
+        payloadBuffer.put(cellPayloadInBytes);
+        byte[] payload = payloadBuffer.array();
+        return TableCell.deserialize(payload, PageTypes.LEAF);
+    }
+
 }

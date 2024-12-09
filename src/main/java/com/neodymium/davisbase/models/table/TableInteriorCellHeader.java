@@ -16,6 +16,10 @@ public record TableInteriorCellHeader(short leftChildPage, int rowId) implements
         return new TableInteriorCellHeader(leftChildPage, rowId);
     }
 
+    public static int getHeaderSize() {
+        return Short.BYTES + Integer.BYTES;
+    }
+
     @Override
     public byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(Short.BYTES + Integer.BYTES);

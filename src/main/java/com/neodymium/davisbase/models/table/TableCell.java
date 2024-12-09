@@ -10,12 +10,14 @@ import java.nio.ByteBuffer;
 public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implements Cell {
     public static Cell deserialize(byte[] data, PageTypes pageType) {
         ByteBuffer buffer = ByteBuffer.wrap(data);
-        byte[] headerBytes = new byte[CellHeader.getHeaderSize()];
-        buffer.get(headerBytes);
         CellHeader cellHeader;
         if (PageTypes.LEAF.equals(pageType)) {
+            byte[] headerBytes = new byte[TableLeafCellHeader.getHeaderSize()];
+            buffer.get(headerBytes);
             cellHeader = TableLeafCellHeader.deserialize(headerBytes);
         } else {
+            byte[] headerBytes = new byte[TableInteriorCellHeader.getHeaderSize()];
+            buffer.get(headerBytes);
             cellHeader = TableInteriorCellHeader.deserialize(headerBytes);
         }
         byte[] payloadBytes = new byte[buffer.remaining()];
@@ -31,7 +33,7 @@ public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implemen
 
     @Override
     public byte[] serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(CellHeader.getHeaderSize() + cellPayload.getSize());
+        ByteBuffer buffer = ByteBuffer.allocate(TableLeafCellHeader.getHeaderSize() + cellPayload.getSize());
         buffer.put(cellHeader.serialize());
         buffer.put(cellPayload.serialize());
         return buffer.array();

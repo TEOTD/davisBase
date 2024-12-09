@@ -16,6 +16,10 @@ public record TableLeafCellHeader(short size, int rowId) implements CellHeader {
         return new TableLeafCellHeader(size, rowId);
     }
 
+    public static int getHeaderSize() {
+        return Short.BYTES + Integer.BYTES;
+    }
+
     @Override
     public byte[] serialize() {
         ByteBuffer buffer = ByteBuffer.allocate(Short.BYTES + Integer.BYTES);

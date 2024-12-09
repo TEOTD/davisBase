@@ -261,4 +261,9 @@ public class BPlusTree {
             tableFile.writeShort((short) newRootPageId);
         }
     }
+
+    public int getMaxRowId() throws IOException {
+        Page rightmostPage = findRightmostLeafPage();
+        return rightmostPage.getMaxRowId();
+    }
 }

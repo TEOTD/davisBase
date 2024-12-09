@@ -23,13 +23,13 @@ public class Constants {
     public static final String DATABASE_SUPPORTED_COMMANDS = "Type \"help;\" to display supported commands.";
 
     //directories
-    public static final String CATALOG_DIRECTORY = "catalogs";
+    public static final String OUTPUT_DIRECTORY = "output";
+    public static final String CATALOG_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "catalogs";
+    public static final String TABLE_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_tables.tbl";
+    public static final String COLUMN_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_columns.tbl";
     public static final String TABLE_FILE_EXTENSION = ".tbl";
     public static final String INDEX_FILE_EXTENSION = ".ndx";
-    public static final String TABLE_DIRECTORY = "tables";
-    public static final String INDEX_DIRECTORY = "indexes";
-    public static final String TABLE_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_tables" + TABLE_FILE_EXTENSION;
-    public static final String COLUMN_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_columns" + TABLE_FILE_EXTENSION;
+    public static final String TABLE_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "tables";
+    public static final String INDEX_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "indexes";
     public static final Integer PAGE_SIZE = 512;
-    public static final String DATA_DIR = "./";
 }
