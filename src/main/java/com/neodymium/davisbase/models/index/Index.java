@@ -30,8 +30,8 @@ public class Index {
             return;
         }
         btree.create();
-        Table table = new Table(tableName);
-        List<Map<Column, Object>> result = table.select(List.of("rowId", columnName), null);
+//        Table table = new Table(tableName);
+//        List<Map<Column, Object>> result = table.select(List.of("rowId", columnName), null);
         List<Map<Column, Object>> result = new ArrayList<>();
         List<Cell> cells = new ArrayList<>();
         for (Map<Column, Object> row : result) {
@@ -77,7 +77,6 @@ public class Index {
         btree.update(cell);
     }
 
-    // key -> column value
     public int search(Object key) throws IOException {
         Optional<Cell> cellOptional = btree.search(key);
         return cellOptional.map(cell -> cell.cellPayload().getRowId()).orElse(-1);

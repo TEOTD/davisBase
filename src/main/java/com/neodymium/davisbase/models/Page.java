@@ -2,6 +2,7 @@ package com.neodymium.davisbase.models;
 
 import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
+import com.neodymium.davisbase.models.index.IndexCell;
 import com.neodymium.davisbase.models.table.TableCell;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import static com.neodymium.davisbase.constants.Constants.PAGE_SIZE;
+
 @Data
 @Slf4j
 @RequiredArgsConstructor
@@ -22,12 +25,12 @@ public class Page {
     private final short pageNumber;
     private final PageTypes pageType;
     private final List<Short> cellOffsets = new ArrayList<>();
-    private final List<Cell> cells = new ArrayList<>();
+    private List<Cell> cells = new ArrayList<>();
     private short rootPage;
     private short parentPage;
     private short siblingPage;
     private short numberOfCells = 0;
-    private short contentAreaStartCell = (short) pageSize;
+    private short contentAreaStartCell = Short.parseShort(String.valueOf(PAGE_SIZE));
 
     public Page(int pageSize, short pageNumber, PageTypes pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageSize = pageSize;
@@ -57,7 +60,12 @@ public class Page {
         List<Cell> cells = new ArrayList<>(numberOfCells);
         for (short offset : cellOffsets) {
             buffer.position(offset);
-            Cell cell = TableCell.deserialize(buffer.array(), pageType);
+            Cell cell;
+            if (PageTypes.LEAF.equals(pageType) || PageTypes.INTERIOR.equals(pageType)) {
+                cell = TableCell.deserialize(buffer.array(), pageType);
+            } else {
+                cell = IndexCell.deserialize(buffer.array(), pageType);
+            }
             cells.add(cell);
         }
 
@@ -67,6 +75,10 @@ public class Page {
         page.cellOffsets.addAll(cellOffsets);
         page.cells.addAll(cells);
         return page;
+    }
+
+    public void insert(List<Cell> cells) {
+        insert(cells, null);
     }
 
     public void insert(List<Cell> cells, String primaryKey) {
@@ -92,9 +104,12 @@ public class Page {
         numberOfCells += (short) cells.size();
     }
 
+    public void update(List<Cell> cells) {
+        update(cells, null);
+    }
+
     public void update(List<Cell> cells, String primaryKey) {
-        int filledSpace = this.cells.size() + this.cellOffsets.size() + 16;
-        if (!hasEnoughSpaceForUpdatedCells(filledSpace, cells, this.cells)) {
+        if (!hasEnoughSpaceForUpdatedCells(cells, this.cells)) {
             throw new DavisBaseException("Page full - not enough space for updated cells.");
         }
 
@@ -174,27 +189,39 @@ public class Page {
         for (Cell cell : cells) {
             requiredSpace += (short) cell.serialize().length;
         }
-        int availableSpace = contentAreaStartCell - requiredSpace;
-        return availableSpace >= (16 + 2 * (numberOfCells + cells.size()));
+        return PAGE_SIZE < (16 + (2 * numberOfCells) + getCellSize(this.cells) + requiredSpace);
     }
 
-    private boolean hasEnoughSpaceForUpdatedCells(int currentStart, List<Cell> newCells, List<Cell> existingCells) {
-        short requiredSpace = 0;
+    private int getCellSize(List<Cell> cells) {
+        int size = 0;
+        for (Cell cell : cells) {
+            size += (short) cell.serialize().length;
+        }
+        return size;
+    }
+
+    private boolean hasEnoughSpaceForUpdatedCells(List<Cell> newCells, List<Cell> existingCells) {
+        int requiredSpace = 0;
         for (Cell existingCell : existingCells) {
             Cell cellToInsert = newCells.stream()
                     .filter(r -> r.cellHeader().rowId() == existingCell.cellHeader().rowId())
                     .findFirst()
                     .orElse(existingCell);
 
-            requiredSpace += (short) cellToInsert.serialize().length;
+            requiredSpace += cellToInsert.serialize().length;
         }
-        int availableSpace = currentStart - requiredSpace;
-        return availableSpace >= (16 + 2 * (existingCells.size() + newCells.size()));
+        return PAGE_SIZE < (16 + (2 * numberOfCells) + requiredSpace);
     }
 
     public Optional<Cell> getCell(int rowId) {
         return cells.stream()
                 .filter(cell -> cell.cellHeader().rowId() == rowId)
+                .findFirst();
+    }
+
+    public Optional<Cell> getCell(Object key) {
+        return cells.stream()
+                .filter(cell -> cell.cellPayload().getKey().equals(key))
                 .findFirst();
     }
 
@@ -212,7 +239,7 @@ public class Page {
         return cells.stream()
                 .mapToInt(cell -> cell.cellHeader().rowId())
                 .max()
-                .orElseThrow(() -> new IllegalStateException("Table cells are empty"));
+                .orElse(0);
     }
 
 
@@ -220,6 +247,16 @@ public class Page {
         return cells.stream()
                 .filter(cell -> cell.cellHeader().rowId() >= minRowId && cell.cellHeader().rowId() <= maxRowId)
                 .toList();
+    }
+
+    public short findChildPage(Object key) {
+        List<Cell> sortedCells = new ArrayList<>(cells);
+        sortedCells.sort(Comparator.comparing(cell -> (Comparable) ((IndexCell) cell).cellPayload().getKey()).reversed());
+        return sortedCells.stream()
+                .filter(cell -> ((Comparable) cell.cellPayload().getKey()).compareTo(key) < 0)
+                .findFirst()
+                .map(cell -> cell.cellHeader().leftChildPage())
+                .orElse(siblingPage);
     }
 
 

@@ -6,9 +6,9 @@ import java.nio.ByteBuffer;
 
 public record TableInteriorCellHeader(short leftChildPage, int rowId) implements CellHeader {
     public static CellHeader deserialize(byte[] headerBytes) {
-        if (headerBytes == null || headerBytes.length != Short.BYTES + Integer.BYTES) {
+        if (headerBytes == null || headerBytes.length != getHeaderSize()) {
             throw new IllegalArgumentException("Invalid headerBytes: Expected length of "
-                    + (Short.BYTES + Integer.BYTES));
+                    + getHeaderSize());
         }
         ByteBuffer buffer = ByteBuffer.wrap(headerBytes);
         short leftChildPage = buffer.getShort();
@@ -22,14 +22,14 @@ public record TableInteriorCellHeader(short leftChildPage, int rowId) implements
 
     @Override
     public byte[] serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(Short.BYTES + Integer.BYTES);
+        ByteBuffer buffer = ByteBuffer.allocate(getHeaderSize());
         buffer.putShort(leftChildPage);
         buffer.putInt(rowId);
         return buffer.array();
     }
 
     @Override
-    public short size() {
-        return (short) 0;
+    public byte size() {
+        return (byte) 0;
     }
 }

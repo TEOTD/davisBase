@@ -153,4 +153,11 @@ public enum DataTypes {
     public static DataTypes getFromTextTypeSize(int textTypeSize) {
         return DataTypes.getFromTypeCode(0x0C + textTypeSize);
     }
+
+    public static DataTypes getFromName(String name) {
+        return Arrays.stream(DataTypes.values())
+                .filter(type -> type.getTypeName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Invalid data type name: " + name));
+    }
 }

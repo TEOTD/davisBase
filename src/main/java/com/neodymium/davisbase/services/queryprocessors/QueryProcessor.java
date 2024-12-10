@@ -9,17 +9,48 @@ import org.springframework.stereotype.Service;
 @AllArgsConstructor
 public class QueryProcessor {
 
-    public final DDLProcessor ddlProcessor;
-    public final DMLProcessor dmlProcessor;
-    public final DQLProcessor dqlProcessor;
+    private final DDLProcessor ddlProcessor;
+    private final DMLProcessor dmlProcessor;
+    private final DQLProcessor dqlProcessor;
 
     public void process(String command) {
-        //todo: make generic function to process the command
-        //todo: breakdown the command and then use switch case to call different processors.
+        if (command == null || command.isBlank()) {
+            log.warn("Command is empty or null.");
+            return;
+        }
+
+        String trimmedCommand = command.trim();
+        String commandType = getCommandType(trimmedCommand);
+
+        try {
+            switch (commandType) {
+                case "DDL" -> ddlProcessor.process(trimmedCommand);
+                case "DML" -> dmlProcessor.process(trimmedCommand);
+                case "DQL" -> dqlProcessor.process(trimmedCommand);
+                default -> log.warn("Unknown command type: {}", trimmedCommand);
+            }
+        } catch (Exception e) {
+            log.error("Error processing command: {}", trimmedCommand, e);
+        }
     }
 
     public boolean isTerminationCommand(String command) {
-        //todo: make termination function
-        return false;
+        return switch (command == null ? "" : command.trim().toUpperCase()) {
+            case "EXIT;", "QUIT;" -> true;
+            default -> false;
+        };
+    }
+
+    private String getCommandType(String command) {
+        command = command.toUpperCase();
+        if (command.startsWith("CREATE") || command.startsWith("DROP") || command.startsWith("ALTER")) {
+            return "DDL";
+        } else if (command.startsWith("INSERT") || command.startsWith("UPDATE") || command.startsWith("DELETE")) {
+            return "DML";
+        } else if (command.startsWith("SELECT") || command.startsWith("SHOW") || command.startsWith("HELP")) {
+            return "DQL";
+        } else {
+            return "UNKNOWN";
+        }
     }
 }

@@ -5,7 +5,7 @@ public interface CellHeader {
 
     short leftChildPage();
 
-    short size();
+    byte size();
 
     int rowId();
 }

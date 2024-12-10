@@ -222,7 +222,7 @@ public class BPlusTree {
         int newPageId = interiorPage.getPageNumber() + 1;
         Page newInteriorPage = new Page(PAGE_SIZE, (short) newPageId, PageTypes.INTERIOR,
                 interiorPage.getRootPage(), interiorPage.getParentPage(), interiorPage.getSiblingPage());
-        interiorPage.insert(List.of(cell), null);
+        interiorPage.insert(List.of(cell));
         interiorPage.setSiblingPage((short) newPageId);
 
         Cell parentCell = TableCell.createParentCell(interiorPage.getPageNumber(), cell.cellHeader().rowId());
@@ -237,7 +237,7 @@ public class BPlusTree {
             Page newRootPage = new Page(PAGE_SIZE, (short) newRootPageId, PageTypes.INTERIOR,
                     (short) newRootPageId, (short) 0xFFFF, rightPage.getPageNumber());
 
-            newRootPage.insert(List.of(cell), null);
+            newRootPage.insert(List.of(cell));
             leftPage.setParentPage((short) newRootPageId);
             rightPage.setParentPage((short) newRootPageId);
             writePage(newRootPage, newRootPageId);
@@ -245,7 +245,7 @@ public class BPlusTree {
         } else {
             Page parentPage = loadPage(leftPage.getParentPage());
             try {
-                parentPage.insert(List.of(cell), null);
+                parentPage.insert(List.of(cell));
                 parentPage.setSiblingPage(rightPage.getPageNumber());
                 writePage(parentPage, parentPage.getPageNumber());
             } catch (DavisBaseException e) {
@@ -256,7 +256,7 @@ public class BPlusTree {
 
     private void updateAllPagesRootPageId(int newRootPageId) throws IOException {
         for (long i = 0; i < tableFile.length() / PAGE_SIZE; i++) {
-            long rootPageIdOffset = i * PAGE_SIZE + 10;
+            long rootPageIdOffset = (i * PAGE_SIZE) + 10;
             tableFile.seek(rootPageIdOffset);
             tableFile.writeShort((short) newRootPageId);
         }

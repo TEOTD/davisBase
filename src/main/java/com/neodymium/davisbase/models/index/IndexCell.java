@@ -1,4 +1,4 @@
-package com.neodymium.davisbase.models.table;
+package com.neodymium.davisbase.models.index;
 
 import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.models.Cell;
@@ -7,28 +7,27 @@ import com.neodymium.davisbase.models.CellPayload;
 
 import java.nio.ByteBuffer;
 
-public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implements Cell {
+public record IndexCell(CellHeader cellHeader, CellPayload cellPayload) implements Cell {
     public static Cell deserialize(byte[] data, PageTypes pageType) {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         CellHeader cellHeader;
-        if (PageTypes.LEAF.equals(pageType)) {
-            byte[] headerBytes = new byte[TableLeafCellHeader.getHeaderSize()];
+        if (PageTypes.LEAF_INDEX.equals(pageType)) {
+            byte[] headerBytes = new byte[IndexLeafCellHeader.getHeaderSize()];
             buffer.get(headerBytes);
-            cellHeader = TableLeafCellHeader.deserialize(headerBytes);
+            cellHeader = IndexLeafCellHeader.deserialize(headerBytes);
         } else {
-            byte[] headerBytes = new byte[TableInteriorCellHeader.getHeaderSize()];
+            byte[] headerBytes = new byte[IndexInteriorCellHeader.getHeaderSize()];
             buffer.get(headerBytes);
-            cellHeader = TableInteriorCellHeader.deserialize(headerBytes);
+            cellHeader = IndexInteriorCellHeader.deserialize(headerBytes);
         }
         byte[] payloadBytes = new byte[buffer.remaining()];
         buffer.get(payloadBytes);
-        CellPayload cellPayload = TableCellPayload.deserialize(payloadBytes);
-        return new TableCell(cellHeader, cellPayload);
+        CellPayload cellPayload = IndexCellPayload.deserialize(payloadBytes);
+        return new IndexCell(cellHeader, cellPayload);
     }
 
-    public static Cell createParentCell(short leftChildPage, int rowId) {
-        CellHeader cellHeader = new TableInteriorCellHeader(leftChildPage, rowId);
-        return new TableCell(cellHeader, null);
+    public static Cell createParentCell(short leftChildPage, Cell cell) {
+        return new IndexCell(new IndexInteriorCellHeader(leftChildPage, cell.cellHeader().size()), cell.cellPayload());
     }
 
     @Override
@@ -43,11 +42,10 @@ public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implemen
 
     @Override
     public void delete() {
-        cellPayload.delete();
     }
 
     @Override
     public boolean exists() {
-        return cellPayload.exists();
+        return true;
     }
 }
