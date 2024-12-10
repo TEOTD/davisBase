@@ -16,7 +16,11 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Represents a table in DavisBase.
@@ -25,13 +29,13 @@ import java.util.*;
 @Setter
 @Slf4j
 public class Table {
+    private static final int PAGE_SIZE = 512;
     private String tableName;
     private List<Column> columns;
     private Map<String, BTree> indexes;
     private BPlusTree bPlusTree;
     private File tableFile;
     private String primaryKey;
-    private static final int PAGE_SIZE = 512;
 
     public Table(String tableName, Column[] schema) throws IOException {
         this.tableName = tableName;
@@ -64,6 +68,58 @@ public class Table {
      */
     public static boolean exists(String tableName) {
         return new File(Constants.DATA_DIR + tableName + ".tbl").exists();
+    }
+
+    /**
+     * Drops a table, deleting the table file, all associated index files, and removing metadata.
+     */
+    public static void dropTable(String tableName) throws IOException {
+        log.info("Dropping table '{}'.", tableName);
+
+        // Delete the table file
+        File tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
+        if (tableFile.exists() && !tableFile.delete()) {
+            throw new IOException("Failed to delete table file for table: " + tableName);
+        }
+
+        // Delete all associated index files
+        File dataDir = new File(Constants.DATA_DIR);
+        File[] indexFiles = dataDir.listFiles((dir, name) -> name.startsWith(tableName + "_") && name.endsWith(".idx"));
+        if (indexFiles != null) {
+            for (File indexFile : indexFiles) {
+                if (!indexFile.delete()) {
+                    throw new IOException("Failed to delete index file: " + indexFile.getName());
+                }
+            }
+        }
+
+        // Remove metadata entries
+        removeFromMetadata(tableName);
+
+        log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
+    }
+
+    /**
+     * Removes table metadata from the system catalog.
+     */
+    private static void removeFromMetadata(String tableName) throws IOException {
+        // Remove from davisbase_tables.tbl
+        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
+        if (metadataFile.exists()) {
+            List<String> lines = Files.readAllLines(metadataFile.toPath());
+            lines.removeIf(line -> line.equalsIgnoreCase(tableName));
+            Files.write(metadataFile.toPath(), lines);
+        }
+
+        // Remove from davisbase_columns.tbl
+        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
+        if (columnsFile.exists()) {
+            List<String> lines = Files.readAllLines(columnsFile.toPath());
+            lines.removeIf(line -> line.startsWith(tableName + "|"));
+            Files.write(columnsFile.toPath(), lines);
+        }
+
+        log.info("Metadata for table '{}' removed from the system catalog.", tableName);
     }
 
     /**
@@ -245,7 +301,6 @@ public class Table {
         }
     }
 
-
     /**
      * Retrieves a column schema map for use in deserialization.
      */
@@ -265,56 +320,5 @@ public class Table {
                 .filter(column -> column.name().equals(columnName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Column '" + columnName + "' does not exist."));
-    }
-    /**
-     * Drops a table, deleting the table file, all associated index files, and removing metadata.
-     */
-    public static void dropTable(String tableName) throws IOException {
-        log.info("Dropping table '{}'.", tableName);
-
-        // Delete the table file
-        File tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
-        if (tableFile.exists() && !tableFile.delete()) {
-            throw new IOException("Failed to delete table file for table: " + tableName);
-        }
-
-        // Delete all associated index files
-        File dataDir = new File(Constants.DATA_DIR);
-        File[] indexFiles = dataDir.listFiles((dir, name) -> name.startsWith(tableName + "_") && name.endsWith(".idx"));
-        if (indexFiles != null) {
-            for (File indexFile : indexFiles) {
-                if (!indexFile.delete()) {
-                    throw new IOException("Failed to delete index file: " + indexFile.getName());
-                }
-            }
-        }
-
-        // Remove metadata entries
-        removeFromMetadata(tableName);
-
-        log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
-    }
-
-    /**
-     * Removes table metadata from the system catalog.
-     */
-    private static void removeFromMetadata(String tableName) throws IOException {
-        // Remove from davisbase_tables.tbl
-        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
-        if (metadataFile.exists()) {
-            List<String> lines = Files.readAllLines(metadataFile.toPath());
-            lines.removeIf(line -> line.equalsIgnoreCase(tableName));
-            Files.write(metadataFile.toPath(), lines);
-        }
-
-        // Remove from davisbase_columns.tbl
-        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
-        if (columnsFile.exists()) {
-            List<String> lines = Files.readAllLines(columnsFile.toPath());
-            lines.removeIf(line -> line.startsWith(tableName + "|"));
-            Files.write(columnsFile.toPath(), lines);
-        }
-
-        log.info("Metadata for table '{}' removed from the system catalog.", tableName);
     }
 }
