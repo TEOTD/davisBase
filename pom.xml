@@ -67,7 +67,11 @@
             <artifactId>jackson-dataformat-xml</artifactId>
             <version>${jackson.version}</version>
         </dependency>
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

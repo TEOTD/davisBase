@@ -2,12 +2,19 @@ package com.neodymium.davisbase.services.queryprocessors;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+<<<<<<< HEAD
+=======
+import org.springframework.stereotype.Service;
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
 
 import java.io.FileWriter;
 import java.io.IOException;
 
+<<<<<<< HEAD
 import org.springframework.stereotype.Service;
 
+=======
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
 @Slf4j
 @Service
 @AllArgsConstructor

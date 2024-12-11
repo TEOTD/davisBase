@@ -12,15 +12,21 @@ public class QueryProcessor {
     public final DDLProcessor ddlProcessor;
     public final DMLProcessor dmlProcessor;
     public final DQLProcessor dqlProcessor;
+<<<<<<< HEAD
     public final TCLProcessor tclProcessor;
     public final VDLProcessor vdlProcessor;
+=======
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
 
     public QueryProcessor() {
         this.ddlProcessor = new DDLProcessor();
         this.dmlProcessor = new DMLProcessor();
         this.dqlProcessor = new DQLProcessor();
+<<<<<<< HEAD
         this.tclProcessor = new TCLProcessor();
         this.vdlProcessor = new VDLProcessor();
+=======
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
     }
 
     public void process(String command) {
@@ -47,12 +53,15 @@ public class QueryProcessor {
                 case "DQL":
                     dqlProcessor.processDQL(command);
                     break;
+<<<<<<< HEAD
                 case "TCL":
                     tclProcessor.processTCL(command);
                     break;
                 case "VDL":
                     vdlProcessor.processVDL(command);
                     break;
+=======
+>>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
                 default:
                     System.out.println("Unknown command type: " + command);
                     break;
