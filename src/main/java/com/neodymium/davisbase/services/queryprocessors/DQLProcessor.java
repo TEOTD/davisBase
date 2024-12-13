@@ -11,11 +11,8 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 
-<<<<<<< HEAD
 import org.springframework.stereotype.Service;
 
-=======
->>>>>>> 5689cd5b61352fa8d05eec945a1947c15e453842
 @Slf4j
 @Service
 @AllArgsConstructor
