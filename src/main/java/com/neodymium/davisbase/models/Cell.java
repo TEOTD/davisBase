@@ -1,4 +1,4 @@
-package com.neodymium.davisbase.models;
+package com.neodymium.davisbase.models.index;
 
 public interface Cell {
     CellHeader cellHeader();

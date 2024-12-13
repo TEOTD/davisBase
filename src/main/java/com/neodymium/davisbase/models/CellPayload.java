@@ -1,4 +1,4 @@
-package com.neodymium.davisbase.models;
+package com.neodymium.davisbase.models.index;
 
 public interface CellPayload {
     byte[] serialize();
@@ -8,4 +8,6 @@ public interface CellPayload {
     boolean exists();
 
     int getSize();
+
+    void getKey();
 }
