@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -66,7 +68,7 @@ public class DDLProcessor {
     }
 
     public void dropIndex(String indexName) throws IOException {
-//        Table.dropIndex(indexName);
+        Table.dropIndex(indexName);
     }
 
     private List<Column> parseColumns(String columnDefinition) {
@@ -74,9 +76,20 @@ public class DDLProcessor {
         String[] columnParts = columnDefinition.split(",");
         for (String part : columnParts) {
             String[] nameAndTypeConstraint = part.trim().split(" ");
-            Constraints constraint = null;
+            Set<Constraints> constraint = new HashSet<>();
             if (nameAndTypeConstraint.length > 2) {
-                constraint = Constraints.getFromValue(nameAndTypeConstraint[2]);
+                boolean containsPk = nameAndTypeConstraint[2].contains(Constraints.PRIMARY_KEY.getValue());
+                boolean containsUnique = nameAndTypeConstraint[2].contains(Constraints.UNIQUE.getValue());
+                boolean containsNotNull = nameAndTypeConstraint[2].contains(Constraints.NOT_NULL.getValue());
+                if (containsPk) {
+                    constraint.add(Constraints.PRIMARY_KEY);
+                }
+                if (containsUnique) {
+                    constraint.add(Constraints.UNIQUE);
+                }
+                if (containsNotNull) {
+                    constraint.add(Constraints.NOT_NULL);
+                }
             }
             columns.add(new Column(nameAndTypeConstraint[0], DataTypes.getFromName(nameAndTypeConstraint[1]), constraint));
         }
