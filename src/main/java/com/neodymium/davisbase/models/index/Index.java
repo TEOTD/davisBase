@@ -1,7 +1,7 @@
 package com.neodymium.davisbase.models.index;
 
 import com.neodymium.davisbase.models.Cell;
-import com.neodymium.davisbase.models.table.Column;
+import com.neodymium.davisbase.models.table.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -30,21 +30,20 @@ public class Index {
             return;
         }
         btree.create();
-//        Table table = new Table(tableName);
-//        List<Map<Column, Object>> result = table.select(List.of("rowId", columnName), null);
-        List<Map<Column, Object>> result = new ArrayList<>();
+        Table table = new Table(tableName, null);
+        List<Map<String, Object>> result = table.select(List.of("rowId", columnName), null);
         List<Cell> cells = new ArrayList<>();
-        for (Map<Column, Object> row : result) {
+        for (Map<String, Object> row : result) {
             Integer rowId = null;
             Object columnValue = null;
 
-            for (Map.Entry<Column, Object> entry : row.entrySet()) {
-                Column column = entry.getKey();
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                String column = entry.getKey();
                 Object value = entry.getValue();
 
-                if (column.name().equals("rowId")) {
+                if (column.equals("rowId")) {
                     rowId = (Integer) value;
-                } else if (column.name().equals(columnName)) {
+                } else if (column.equals(columnName)) {
                     columnValue = value;
                 }
             }

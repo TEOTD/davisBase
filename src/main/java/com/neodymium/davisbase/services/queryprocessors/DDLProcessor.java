@@ -3,6 +3,7 @@ package com.neodymium.davisbase.services.queryprocessors;
 import com.neodymium.davisbase.constants.enums.Constraints;
 import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.models.table.Column;
+import com.neodymium.davisbase.models.table.Table;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,13 +43,11 @@ public class DDLProcessor {
         String columnDefinition = parts[1].replace(")", "").trim();
 
         List<Column> columns = parseColumns(columnDefinition);
-//        Table table = new Table(tableName);
-//        table.create(columns);
+        new Table(tableName, columns);
     }
 
     public void dropTable(String tableName) throws IOException {
-//        Table table = new Table(tableName);
-//        table.drop();
+        Table.drop(tableName);
     }
 
     public void createIndex(String indexDefinition) throws IOException {
@@ -62,8 +61,8 @@ public class DDLProcessor {
         String tableName = tableNameAndColumnParts[0].trim();
         String columnName = tableNameAndColumnParts[1].replace(")", "").trim();
 
-//        Table table = new Table(tableName);
-//        table.createIndex(indexName, columnName);
+        Table table = new Table(tableName, null);
+        table.createIndex(indexName, columnName);
     }
 
     public void dropIndex(String indexName) throws IOException {

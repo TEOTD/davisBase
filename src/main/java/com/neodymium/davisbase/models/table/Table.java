@@ -1,6 +1,5 @@
 package com.neodymium.davisbase.models.table;
 
-import com.neodymium.davisbase.constants.Constants;
 import com.neodymium.davisbase.constants.enums.Constraints;
 import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
@@ -11,15 +10,27 @@ import com.neodymium.davisbase.models.index.Index;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
+import org.springframework.util.ObjectUtils;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static com.neodymium.davisbase.constants.Constants.COLUMN_CATALOG;
+import static com.neodymium.davisbase.constants.Constants.INDEX_DIRECTORY;
+import static com.neodymium.davisbase.constants.Constants.INDEX_FILE_EXTENSION;
+import static com.neodymium.davisbase.constants.Constants.TABLE_CATALOG;
+import static com.neodymium.davisbase.constants.Constants.TABLE_DIRECTORY;
+import static com.neodymium.davisbase.constants.Constants.TABLE_FILE_EXTENSION;
 
 /**
  * Represents a table in the DavisBase database.
@@ -34,7 +45,6 @@ public class Table {
     private final Map<String, String> indexColMap = new HashMap<>(); // key -> index name && value -> column name
     private final BPlusTree bPlusTree;
     private final String primaryKey;
-    private static final int PAGE_SIZE = Constants.PAGE_SIZE;
 
     /**
      * Constructor to create or load a table.
@@ -43,33 +53,64 @@ public class Table {
      * @param schema    Array of columns defining the table schema.
      * @throws IOException If an I/O error occurs.
      */
-    public Table(String tableName, Column[] schema) throws IOException {
+    public Table(String tableName, List<Column> schema) throws IOException {
         this.tableName = tableName;
 
         // Identify the primary key
-        this.primaryKey = Arrays.stream(schema)
+        this.primaryKey = schema.stream()
                 .filter(Column::isPrimaryKey)
                 .map(Column::name)
                 .findFirst()
                 .orElse(null);
 
-        File tableFile = new File(Constants.TABLE_DIRECTORY, tableName + Constants.TABLE_FILE_EXTENSION);
+        File tableFile = new File(TABLE_DIRECTORY, tableName + TABLE_FILE_EXTENSION);
         if (!tableFile.exists()) {
             initializeTableFile(tableFile);
         }
 
         this.bPlusTree = new BPlusTree(new RandomAccessFile(tableFile, "rw"));
-        if(!StringUtils.isEmpty(this.primaryKey)){
-            createIndex(Constants.INDEX_DIRECTORY + tableName + "" + primaryKey + Constants.INDEX_FILE_EXTENSION, primaryKey);
+        if (!ObjectUtils.isEmpty(this.primaryKey)) {
+            createIndex(INDEX_DIRECTORY + tableName + primaryKey + INDEX_FILE_EXTENSION, primaryKey);
         }
-        if(schema.length !=0){
+        if (!schema.isEmpty()) {
             initializeColumnsFromSchema(schema);
             addToMetadata();
-        }else {
+        } else {
             initializeColumnsFromMetadata();
         }
+    }
 
+    /**
+     * Drops a table by deleting its metadata and associated files.
+     *
+     * @throws IOException If there is an error accessing files.
+     */
+    public static void drop(String tableName) throws IOException {
+        log.info("Dropping table '{}'.", tableName);
 
+        // Step 1: Delete the table file
+        File tableFile = new File(TABLE_DIRECTORY, tableName + TABLE_FILE_EXTENSION);
+        if (tableFile.exists() && !tableFile.delete()) {
+            throw new IOException("Failed to delete table file for table: " + tableName);
+        }
+
+        // Step 3: Remove metadata from davisbase_tables
+        File tablesCatalog = new File(TABLE_CATALOG);
+        if (tablesCatalog.exists()) {
+            List<String> tableLines = Files.readAllLines(tablesCatalog.toPath());
+            tableLines.removeIf(line -> line.split("\\|")[1].equalsIgnoreCase(tableName));
+            Files.write(tablesCatalog.toPath(), tableLines);
+        }
+
+        // Step 4: Remove metadata from davisbase_columns
+        File columnsCatalog = new File(COLUMN_CATALOG);
+        if (columnsCatalog.exists()) {
+            List<String> columnLines = Files.readAllLines(columnsCatalog.toPath());
+            columnLines.removeIf(line -> line.split("\\|")[3].equalsIgnoreCase(tableName));
+            Files.write(columnsCatalog.toPath(), columnLines);
+        }
+
+        log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
     }
 
     /**
@@ -87,7 +128,7 @@ public class Table {
     /**
      * Initializes columns for a new table based on the given schema.
      */
-    private void initializeColumnsFromSchema(Column[] schemaInfo) {
+    private void initializeColumnsFromSchema(List<Column> schemaInfo) {
         for (Column column : schemaInfo) {
             addColumn(column.name(), column.dataType(), column.constraints());
         }
@@ -97,9 +138,9 @@ public class Table {
      * Initializes columns for an existing table by reading metadata.
      */
     private void initializeColumnsFromMetadata() throws IOException {
-        File columnsCatalog = new File(Constants.COLUMN_CATALOG);
+        File columnsCatalog = new File(COLUMN_CATALOG);
         if (!columnsCatalog.exists()) {
-            throw new IllegalStateException("Metadata file does not exist: " + Constants.COLUMN_CATALOG);
+            throw new IllegalStateException("Metadata file does not exist: " + COLUMN_CATALOG);
         }
 
         List<String> metadataLines = Files.readAllLines(columnsCatalog.toPath());
@@ -121,11 +162,10 @@ public class Table {
      * Adds a column to the schema.
      */
     private void addColumn(String name, DataTypes dataType, Set<Constraints> constraints) {
-        if (constraints.contains(Constraints.PRIMARY_KEY)) {
-            if (this.primaryKey != null) {
-                throw new IllegalArgumentException("Table can have only one PRIMARY KEY column.");
-            }
+        if (constraints.contains(Constraints.PRIMARY_KEY) && this.primaryKey != null) {
+            throw new IllegalArgumentException("Table can have only one PRIMARY KEY column.");
         }
+
         columns.add(new Column(name, dataType, constraints));
     }
 
@@ -134,7 +174,7 @@ public class Table {
      */
     private void addToMetadata() throws IOException {
         // Add an entry to davisbase_tables
-        File tablesCatalogFile = new File(Constants.TABLE_CATALOG);
+        File tablesCatalogFile = new File(TABLE_CATALOG);
         if (!tablesCatalogFile.exists()) {
             tablesCatalogFile.createNewFile();
         }
@@ -149,7 +189,7 @@ public class Table {
         }
 
         // Add an entry to davisbase_columns for each column
-        File columnsCatalogFile = new File(Constants.COLUMN_CATALOG);
+        File columnsCatalogFile = new File(COLUMN_CATALOG);
         if (!columnsCatalogFile.exists()) {
             columnsCatalogFile.createNewFile();
         }
@@ -202,7 +242,6 @@ public class Table {
         throw new IllegalArgumentException("Table '" + tableName + "' not found in davisbase_tables.");
     }
 
-
     /**
      * Inserts a record into the table.
      */
@@ -236,7 +275,7 @@ public class Table {
             rowData.put(column, value);
         }
 
-        Row row = new Row(bPlusTree.getMaxRowId()+1, rowData);
+        Row row = new Row(bPlusTree.getMaxRowId() + 1, rowData);
         bPlusTree.insert(Collections.singletonMap(this.primaryKey, row.cellFromRow()));
 
         /*
@@ -287,7 +326,6 @@ public class Table {
         }
         return result;
     }
-
 
     /**
      * Updates records based on conditions.
@@ -380,14 +418,13 @@ public class Table {
         return deletedCount;
     }
 
-
     /**
      * Creates an index on a column.
      */
     // To-do : create and use mapping between index name and column name
     public void createIndex(String indexName, String columnName) throws IOException {
         //File indexFile = new File(Constants.INDEX_DIRECTORY, tableName + "_" + columnName + Constants.INDEX_FILE_EXTENSION);
-        File indexFile = new File(indexName + Constants.INDEX_FILE_EXTENSION);
+        File indexFile = new File(indexName + INDEX_FILE_EXTENSION);
         if (!indexFile.exists()) {
             if (!indexFile.createNewFile()) {
                 throw new IOException("Failed to create index file for column: " + columnName);
@@ -419,52 +456,6 @@ public class Table {
                 .filter(column -> column.name().equalsIgnoreCase(columnName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Column not found: " + columnName));
-    }
-
-    /**
-     * Drops a table by deleting its metadata and associated files.
-     *
-     * @throws IOException If there is an error accessing files.
-     */
-    public static void dropTable(String tableName) throws IOException {
-        log.info("Dropping table '{}'.", tableName);
-
-        // Step 1: Delete the table file
-        File tableFile = new File(Constants.TABLE_DIRECTORY, tableName + Constants.TABLE_FILE_EXTENSION);
-        if (tableFile.exists() && !tableFile.delete()) {
-            throw new IOException("Failed to delete table file for table: " + tableName);
-        }
-        /*
-        // Step 2: Delete all associated index files
-        File indexDirectory = new File(Constants.INDEX_DIRECTORY);
-        File[] indexFiles = indexDirectory.listFiles((dir, name) -> name.startsWith(tableName + "_") && name.endsWith(Constants.INDEX_FILE_EXTENSION));
-        if (indexFiles != null) {
-            for (File indexFile : indexFiles) {
-                if (!indexFile.delete()) {
-                    throw new IOException("Failed to delete index file: " + indexFile.getName());
-                }
-            }
-        }
-
-
-         */
-        // Step 3: Remove metadata from davisbase_tables
-        File tablesCatalog = new File(Constants.TABLE_CATALOG);
-        if (tablesCatalog.exists()) {
-            List<String> tableLines = Files.readAllLines(tablesCatalog.toPath());
-            tableLines.removeIf(line -> line.split("\\|")[1].equalsIgnoreCase(tableName));
-            Files.write(tablesCatalog.toPath(), tableLines);
-        }
-
-        // Step 4: Remove metadata from davisbase_columns
-        File columnsCatalog = new File(Constants.COLUMN_CATALOG);
-        if (columnsCatalog.exists()) {
-            List<String> columnLines = Files.readAllLines(columnsCatalog.toPath());
-            columnLines.removeIf(line -> line.split("\\|")[3].equalsIgnoreCase(tableName));
-            Files.write(columnsCatalog.toPath(), columnLines);
-        }
-
-        log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
     }
 
 }
