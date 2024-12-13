@@ -1,5 +1,6 @@
 package com.neodymium.davisbase.models.table;
 
+import com.neodymium.davisbase.constants.Constants;
 import com.neodymium.davisbase.constants.enums.Constraints;
 import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
@@ -560,5 +561,49 @@ public class Table {
         }
     }
 
+    /**
+     * Drops an index on a specified column.
+     *
+     * @param indexName The name of the index to drop.
+     * @throws IOException If an error occurs while accessing files.
+     */
+    public void dropIndex(String indexName) throws IOException {
+        // Validate if the index exists
+        if (!indexColMap.containsKey(indexName)) {
+            throw new IllegalArgumentException("Index '" + indexName + "' does not exist.");
+        }
+
+        // Get the column name associated with the index
+        String columnName = indexColMap.get(indexName);
+
+        // Remove the index from the indexes map
+        indexes.remove(columnName);
+
+        // Remove the index file
+        File indexFile = new File(indexName + Constants.INDEX_FILE_EXTENSION);
+        if (indexFile.exists() && !indexFile.delete()) {
+            throw new IOException("Failed to delete index file for index: " + indexName);
+        }
+
+        // Remove the index entry from the indexColMap
+        indexColMap.remove(indexName);
+
+        // Update the metadata in davisbase_columns
+        Table davisbaseColumns = new Table("davisbase_columns", List.of());
+        List<Map<String, Object>> columnMetadata = davisbaseColumns.select(
+                List.of("rowid"),
+                "table_name = '" + tableName + "' AND column_name = '" + columnName + "'"
+        );
+
+        if (!columnMetadata.isEmpty()) {
+            int rowId = (Integer) columnMetadata.get(0).get("rowid");
+            davisbaseColumns.update(
+                    "rowid = " + rowId,
+                    Map.of("index_name", "")
+            );
+        }
+
+        log.info("Index '{}' on column '{}' successfully dropped.", indexName, columnName);
+    }
 
 }
