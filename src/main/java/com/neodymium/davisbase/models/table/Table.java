@@ -137,6 +137,7 @@ public class Table {
     /**
      * Initializes columns for an existing table by reading metadata.
      */
+    /*
     private void initializeColumnsFromMetadata() throws IOException {
         File columnsCatalog = new File(COLUMN_CATALOG);
         if (!columnsCatalog.exists()) {
@@ -158,6 +159,8 @@ public class Table {
         }
     }
 
+     */
+
     /**
      * Adds a column to the schema.
      */
@@ -172,6 +175,7 @@ public class Table {
     /**
      * Adds the table metadata to the system catalogs.
      */
+    /*
     private void addToMetadata() throws IOException {
         // Add an entry to davisbase_tables
         File tablesCatalogFile = new File(TABLE_CATALOG);
@@ -208,6 +212,8 @@ public class Table {
             }
         }
     }
+
+     */
 
     private Set<Constraints> parseConstraints(String constraintsString) {
         Set<Constraints> constraints = new HashSet<>();
@@ -457,5 +463,102 @@ public class Table {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Column not found: " + columnName));
     }
+
+    public static void initializeMetadataTables() throws IOException {
+        Column[] tablesSchema = {
+                new Column("rowid", DataTypes.INT, Set.of(Constraints.PRIMARY_KEY)),
+                new Column("table_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
+                new Column("record_count", DataTypes.INT, Set.of()),
+                new Column("avg_length", DataTypes.SMALLINT, Set.of()),
+                new Column("root_page", DataTypes.SMALLINT, Set.of())
+        };
+
+        Column[] columnsSchema = {
+                new Column("rowid", DataTypes.INT, Set.of(Constraints.PRIMARY_KEY)),
+                new Column("column_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
+                new Column("table_rowid", DataTypes.INT, Set.of(Constraints.NOT_NULL)),
+                new Column("table_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
+                new Column("data_type", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
+                new Column("ordinal_position", DataTypes.TINYINT, Set.of(Constraints.NOT_NULL)),
+                new Column("constraints", DataTypes.TEXT, Set.of()),
+                new Column("index_name", DataTypes.TEXT, Set.of())
+        };
+
+        Table davisbaseTables = new Table("davisbase_tables", List.of(tablesSchema));
+        Table davisbaseColumns = new Table("davisbase_columns", List.of(columnsSchema));
+    }
+
+    private void addToMetadata() throws IOException {
+        Table davisbaseTables = new Table("davisbase_tables", List.of());
+        Table davisbaseColumns = new Table("davisbase_columns", List.of());
+
+        // Add to davisbase_tables
+        Map<String, Object> tableRecord = new HashMap<>();
+        tableRecord.put("rowid", getNextRowId(davisbaseTables));
+        tableRecord.put("table_name", tableName);
+        tableRecord.put("record_count", 0);
+        tableRecord.put("avg_length", 0);
+        tableRecord.put("root_page", 0);
+        davisbaseTables.insert(tableRecord);
+
+        // Add to davisbase_columns
+        int ordinalPosition = 1;
+        for (Column column : columns) {
+            Map<String, Object> columnRecord = new HashMap<>();
+            columnRecord.put("rowid", getNextRowId(davisbaseColumns));
+            columnRecord.put("column_name", column.name());
+            columnRecord.put("table_rowid", tableRecord.get("rowid"));
+            columnRecord.put("table_name", tableName);
+            columnRecord.put("data_type", column.dataType().toString());
+            columnRecord.put("ordinal_position", ordinalPosition++);
+            columnRecord.put("constraints", String.join(",", column.constraints().stream()
+                    .map(Constraints::getValue)
+                    .toList()));
+            columnRecord.put("index_name", indexColMap.entrySet().stream()
+                    .filter(entry -> entry.getValue().equals(column.name()))
+                    .map(Map.Entry::getKey)
+                    .findFirst()
+                    .orElse(""));
+            davisbaseColumns.insert(columnRecord);
+        }
+    }
+
+    private int getNextRowId(Table table) throws IOException {
+        List<Map<String, Object>> results = table.select(List.of("rowid"), null);
+
+        // If there are no rows, start with row ID 1
+        if (results.isEmpty()) {
+            return 1;
+        }
+
+        // Find the maximum rowid in the results
+        return results.stream()
+                .map(row -> (Integer) row.get("rowid"))
+                .max(Integer::compare)
+                .orElse(0) + 1;
+    }
+
+    private void initializeColumnsFromMetadata() throws IOException {
+        Table davisbaseColumns = new Table("davisbase_columns", List.of());
+
+        List<Map<String, Object>> columnMetadata = davisbaseColumns.select(
+                List.of("column_name", "data_type", "constraints", "index_name"),
+                "table_name = '" + tableName + "'"
+        );
+
+        for (Map<String, Object> columnData : columnMetadata) {
+            String columnName = (String) columnData.get("column_name");
+            DataTypes dataType = DataTypes.valueOf((String) columnData.get("data_type"));
+            Set<Constraints> constraints = parseConstraints((String) columnData.get("constraints"));
+            String indexName = (String) columnData.get("index_name");
+
+            addColumn(columnName, dataType, constraints);
+
+            if (!indexName.isEmpty()) {
+                indexColMap.put(indexName, columnName);
+            }
+        }
+    }
+
 
 }
