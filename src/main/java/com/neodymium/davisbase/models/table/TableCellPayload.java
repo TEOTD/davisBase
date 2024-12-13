@@ -66,7 +66,16 @@ public class TableCellPayload implements CellPayload {
     }
 
     @Override
+    public int getRowId() {
+        return 0;
+    }
+
+    @Override
+    public Object getKey() {
+        return null;
+    }
+
     public int getSize() {
-        return 2 + (4 * dataTypes.size()) + body.length;
+        return 2 + dataTypes.size() + body.length;
     }
 }

@@ -7,5 +7,7 @@ public interface CellPayload {
 
     boolean exists();
 
-    int getSize();
+    Object getKey();
+
+    int getRowId();
 }

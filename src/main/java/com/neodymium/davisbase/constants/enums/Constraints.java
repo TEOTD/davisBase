@@ -3,6 +3,8 @@ package com.neodymium.davisbase.constants.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.util.Arrays;
+
 @Getter
 @AllArgsConstructor
 public enum Constraints {
@@ -12,7 +14,10 @@ public enum Constraints {
 
     private final String value;
 
-    public String getValue() {
-        return value;
+    public static Constraints getFromValue(String value) {
+        return Arrays.stream(Constraints.values())
+                .filter(c -> c.getValue().equals(value))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Invalid constraint: " + value));
     }
 }

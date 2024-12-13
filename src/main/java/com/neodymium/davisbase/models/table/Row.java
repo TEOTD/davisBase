@@ -71,7 +71,7 @@ public record Row(int id, Map<Column, Object> data) {
 
         byte[] body = bodyBuffer.array();
 
-        CellHeader cellHeader = new TableLeafCellHeader((short) estimatedSize, id);
+        CellHeader cellHeader = new TableLeafCellHeader((byte) estimatedSize, id);
         CellPayload cellPayload = new TableCellPayload((byte) 0, (byte) noOfColumns, dataTypes, body);
 
         byte[] cellHeaderInBytes = cellHeader.serialize();

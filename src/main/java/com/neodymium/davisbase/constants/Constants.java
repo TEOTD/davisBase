@@ -27,6 +27,8 @@ public class Constants {
     public static final String CATALOG_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "catalogs";
     public static final String TABLE_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_tables.tbl";
     public static final String COLUMN_CATALOG = CATALOG_DIRECTORY + File.separator + "davisbase_columns.tbl";
+    public static final String TABLE_CATALOG_NAME = "davisbase_tables";
+    public static final String COLUMN_CATALOG_NAME = "davisbase_columns";
     public static final String TABLE_FILE_EXTENSION = ".tbl";
     public static final String INDEX_FILE_EXTENSION = ".ndx";
     public static final String TABLE_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "tables";
