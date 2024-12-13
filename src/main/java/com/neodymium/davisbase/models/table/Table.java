@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.ObjectUtils;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -114,6 +113,30 @@ public class Table {
         log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
     }
 
+    public static void initializeMetadataTables() throws IOException {
+        Column[] tablesSchema = {
+                new Column("rowid", DataTypes.INT.getTypeCode(), Set.of(Constraints.PRIMARY_KEY)),
+                new Column("table_name", DataTypes.TEXT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("record_count", DataTypes.INT.getTypeCode(), Set.of()),
+                new Column("avg_length", DataTypes.SMALLINT.getTypeCode(), Set.of()),
+                new Column("root_page", DataTypes.SMALLINT.getTypeCode(), Set.of())
+        };
+
+        Column[] columnsSchema = {
+                new Column("rowid", DataTypes.INT.getTypeCode(), Set.of(Constraints.PRIMARY_KEY)),
+                new Column("column_name", DataTypes.TEXT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("table_rowid", DataTypes.INT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("table_name", DataTypes.TEXT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("data_type", DataTypes.TEXT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("ordinal_position", DataTypes.TINYINT.getTypeCode(), Set.of(Constraints.NOT_NULL)),
+                new Column("constraints", DataTypes.TEXT.getTypeCode(), Set.of()),
+                new Column("index_name", DataTypes.TEXT.getTypeCode(), Set.of())
+        };
+
+        Table davisbaseTables = new Table("davisbase_tables", List.of(tablesSchema));
+        Table davisbaseColumns = new Table("davisbase_columns", List.of(columnsSchema));
+    }
+
     /**
      * Initializes the table file with a root page.
      */
@@ -123,15 +146,6 @@ public class Table {
             log.info("Table file created for '{}'.", tableName);
         } else {
             throw new IOException("Failed to initialize table file: " + tableFile.getName());
-        }
-    }
-
-    /**
-     * Initializes columns for a new table based on the given schema.
-     */
-    private void initializeColumnsFromSchema(List<Column> schemaInfo) {
-        for (Column column : schemaInfo) {
-            addColumn(column.name(), column.typeCode(), column.constraints());
         }
     }
 
@@ -161,6 +175,15 @@ public class Table {
     }
 
      */
+
+    /**
+     * Initializes columns for a new table based on the given schema.
+     */
+    private void initializeColumnsFromSchema(List<Column> schemaInfo) {
+        for (Column column : schemaInfo) {
+            addColumn(column.name(), column.typeCode(), column.constraints());
+        }
+    }
 
     /**
      * Adds a column to the schema.
@@ -215,7 +238,6 @@ public class Table {
     }
 
      */
-
     private Set<Constraints> parseConstraints(String constraintsString) {
         Set<Constraints> constraints = new HashSet<>();
         if (constraintsString == null || constraintsString.isEmpty()) {
@@ -471,30 +493,6 @@ public class Table {
                 .orElseThrow(() -> new IllegalArgumentException("Column not found: " + columnName));
     }
 
-    public static void initializeMetadataTables() throws IOException {
-        Column[] tablesSchema = {
-                new Column("rowid", DataTypes.INT, Set.of(Constraints.PRIMARY_KEY)),
-                new Column("table_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
-                new Column("record_count", DataTypes.INT, Set.of()),
-                new Column("avg_length", DataTypes.SMALLINT, Set.of()),
-                new Column("root_page", DataTypes.SMALLINT, Set.of())
-        };
-
-        Column[] columnsSchema = {
-                new Column("rowid", DataTypes.INT, Set.of(Constraints.PRIMARY_KEY)),
-                new Column("column_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
-                new Column("table_rowid", DataTypes.INT, Set.of(Constraints.NOT_NULL)),
-                new Column("table_name", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
-                new Column("data_type", DataTypes.TEXT, Set.of(Constraints.NOT_NULL)),
-                new Column("ordinal_position", DataTypes.TINYINT, Set.of(Constraints.NOT_NULL)),
-                new Column("constraints", DataTypes.TEXT, Set.of()),
-                new Column("index_name", DataTypes.TEXT, Set.of())
-        };
-
-        Table davisbaseTables = new Table("davisbase_tables", List.of(tablesSchema));
-        Table davisbaseColumns = new Table("davisbase_columns", List.of(columnsSchema));
-    }
-
     private void addToMetadata() throws IOException {
         Table davisbaseTables = new Table("davisbase_tables", List.of());
         Table davisbaseColumns = new Table("davisbase_columns", List.of());
@@ -516,7 +514,7 @@ public class Table {
             columnRecord.put("column_name", column.name());
             columnRecord.put("table_rowid", tableRecord.get("rowid"));
             columnRecord.put("table_name", tableName);
-            columnRecord.put("data_type", column.dataType().toString());
+            columnRecord.put("data_type", DataTypes.getFromTypeCode(column.typeCode()).getTypeName());
             columnRecord.put("ordinal_position", ordinalPosition++);
             columnRecord.put("constraints", String.join(",", column.constraints().stream()
                     .map(Constraints::getValue)
@@ -550,9 +548,11 @@ public class Table {
 
         for (Map<String, Object> columnData : columnMetadata) {
             String columnName = (String) columnData.get("column_name");
-            DataTypes dataType = DataTypes.valueOf((String) columnData.get("data_type"));
+            DataTypes dataType = DataTypes.getFromName((String) columnData.get("data_type"));
             Set<Constraints> constraints = parseConstraints((String) columnData.get("constraints"));
-            addColumn(columnName, dataType, constraints);
+
+            addColumn(columnName, dataType.getTypeCode(), constraints);
+
         }
 
         // Populate indexColMap by scanning the index directory

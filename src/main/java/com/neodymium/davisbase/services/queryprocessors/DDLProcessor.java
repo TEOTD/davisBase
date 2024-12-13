@@ -91,7 +91,7 @@ public class DDLProcessor {
                     constraint.add(Constraints.NOT_NULL);
                 }
             }
-            columns.add(new Column(nameAndTypeConstraint[0], DataTypes.getFromName(nameAndTypeConstraint[1]), constraint));
+            columns.add(new Column(nameAndTypeConstraint[0], DataTypes.getFromName(nameAndTypeConstraint[1]).getTypeCode(), constraint));
         }
         return columns;
     }
