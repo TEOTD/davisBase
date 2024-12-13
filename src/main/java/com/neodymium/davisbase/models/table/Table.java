@@ -431,16 +431,22 @@ public class Table {
     // To-do : create and use mapping between index name and column name
     public void createIndex(String indexName, String columnName) throws IOException {
         //File indexFile = new File(Constants.INDEX_DIRECTORY, tableName + "_" + columnName + Constants.INDEX_FILE_EXTENSION);
-        File indexFile = new File(indexName + INDEX_FILE_EXTENSION);
-        if (!indexFile.exists()) {
-            if (!indexFile.createNewFile()) {
-                throw new IOException("Failed to create index file for column: " + columnName);
-            }
+        // Construct the index file name
+        String fullIndexName = tableName + "-" + columnName + "-" + indexName;
+        File indexFile = new File( INDEX_DIRECTORY + fullIndexName + INDEX_FILE_EXTENSION);
+        // Check if the index file already exists
+        if (indexFile.exists()) {
+            throw new IllegalArgumentException("Index file '" + fullIndexName + "' already exists.");
+        }
+
+        // Create the index file
+        if (!indexFile.createNewFile()) {
+            throw new IOException("Failed to create index file: " + fullIndexName);
         }
         Index index = new Index(tableName, columnName, new RandomAccessFile(indexFile, "rw"));
         index.create();
         indexes.put(columnName, index);
-        indexColMap.put(indexName, columnName);
+        indexColMap.put(fullIndexName, columnName);
         log.info("Index created for column {}.", columnName);
     }
 
@@ -515,11 +521,6 @@ public class Table {
             columnRecord.put("constraints", String.join(",", column.constraints().stream()
                     .map(Constraints::getValue)
                     .toList()));
-            columnRecord.put("index_name", indexColMap.entrySet().stream()
-                    .filter(entry -> entry.getValue().equals(column.name()))
-                    .map(Map.Entry::getKey)
-                    .findFirst()
-                    .orElse(""));
             davisbaseColumns.insert(columnRecord);
         }
     }
@@ -543,7 +544,7 @@ public class Table {
         Table davisbaseColumns = new Table("davisbase_columns", List.of());
 
         List<Map<String, Object>> columnMetadata = davisbaseColumns.select(
-                List.of("column_name", "data_type", "constraints", "index_name"),
+                List.of("column_name", "data_type", "constraints"),
                 "table_name = '" + tableName + "'"
         );
 
@@ -551,13 +552,9 @@ public class Table {
             String columnName = (String) columnData.get("column_name");
             DataTypes dataType = DataTypes.valueOf((String) columnData.get("data_type"));
             Set<Constraints> constraints = parseConstraints((String) columnData.get("constraints"));
-            String indexName = (String) columnData.get("index_name");
+
 
             addColumn(columnName, dataType, constraints);
-
-            if (!indexName.isEmpty()) {
-                indexColMap.put(indexName, columnName);
-            }
         }
     }
 
@@ -565,45 +562,33 @@ public class Table {
      * Drops an index on a specified column.
      *
      * @param indexName The name of the index to drop.
-     * @throws IOException If an error occurs while accessing files.
+     * @throws IOException If an error occurs while deleting the index.
      */
     public void dropIndex(String indexName) throws IOException {
-        // Validate if the index exists
-        if (!indexColMap.containsKey(indexName)) {
-            throw new IllegalArgumentException("Index '" + indexName + "' does not exist.");
-        }
+
+        // Construct the full index name
+        String fullIndexName = indexColMap.keySet().stream()
+                .filter(key -> key.endsWith(indexName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Index '" + indexName + "' does not exist."));
 
         // Get the column name associated with the index
-        String columnName = indexColMap.get(indexName);
+        String columnName = indexColMap.get(fullIndexName);
 
         // Remove the index from the indexes map
         indexes.remove(columnName);
 
         // Remove the index file
-        File indexFile = new File(indexName + Constants.INDEX_FILE_EXTENSION);
+        File indexFile = new File(INDEX_DIRECTORY, fullIndexName + INDEX_FILE_EXTENSION);
         if (indexFile.exists() && !indexFile.delete()) {
-            throw new IOException("Failed to delete index file for index: " + indexName);
+            throw new IOException("Failed to delete index file for index: " + fullIndexName);
         }
 
         // Remove the index entry from the indexColMap
-        indexColMap.remove(indexName);
+        indexColMap.remove(fullIndexName);
 
-        // Update the metadata in davisbase_columns
-        Table davisbaseColumns = new Table("davisbase_columns", List.of());
-        List<Map<String, Object>> columnMetadata = davisbaseColumns.select(
-                List.of("rowid"),
-                "table_name = '" + tableName + "' AND column_name = '" + columnName + "'"
-        );
-
-        if (!columnMetadata.isEmpty()) {
-            int rowId = (Integer) columnMetadata.get(0).get("rowid");
-            davisbaseColumns.update(
-                    "rowid = " + rowId,
-                    Map.of("index_name", "")
-            );
-        }
-
-        log.info("Index '{}' on column '{}' successfully dropped.", indexName, columnName);
+        log.info("Index '{}' on column '{}' successfully dropped.", fullIndexName, columnName);
     }
+
 
 }
