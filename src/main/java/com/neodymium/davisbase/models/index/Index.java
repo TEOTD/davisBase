@@ -1,35 +1,85 @@
 package com.neodymium.davisbase.models.index;
 
-import java.util.*;
+import com.neodymium.davisbase.models.Cell;
+import com.neodymium.davisbase.models.table.Column;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@Data
+@AllArgsConstructor
 public class Index {
-    private final String columnName;
-    private final Map<Object, List<Integer>> indexMap; // Maps column values to row IDs
+    private String tableName;
+    private String columnName;
+    private BTree btree;
 
-    public Index(String columnName) {
+    public Index(String tableName, String columnName, RandomAccessFile file) {
+        this.tableName = tableName;
         this.columnName = columnName;
-        this.indexMap = new HashMap<>();
+        this.btree = new BTree(file);
     }
 
-    public void insert(Object value, int rowId) {
-        indexMap.computeIfAbsent(value, k -> new ArrayList<>()).add(rowId);
-    }
+    public void create() throws IOException {
+        if (btree.isInitialized()) {
+            return;
+        }
+        btree.create();
+        Table table = new Table(tableName);
+        List<Map<Column, Object>> result = table.select(List.of("rowId", columnName), null);
+        List<Map<Column, Object>> result = new ArrayList<>();
+        List<Cell> cells = new ArrayList<>();
+        for (Map<Column, Object> row : result) {
+            Integer rowId = null;
+            Object columnValue = null;
 
-    public void delete(Object value, int rowId) {
-        List<Integer> rowIds = indexMap.get(value);
-        if (rowIds != null) {
-            rowIds.remove((Integer) rowId);
-            if (rowIds.isEmpty()) {
-                indexMap.remove(value);
+            for (Map.Entry<Column, Object> entry : row.entrySet()) {
+                Column column = entry.getKey();
+                Object value = entry.getValue();
+
+                if (column.name().equals("rowId")) {
+                    rowId = (Integer) value;
+                } else if (column.name().equals(columnName)) {
+                    columnValue = value;
+                }
             }
+            if (rowId != null && columnValue != null) {
+                IndexCell cell = new IndexCell(
+                        new IndexLeafCellHeader((byte) ((byte[]) columnValue).length),
+                        new IndexCellPayload(columnValue, rowId)
+                );
+                cells.add(cell);
+            }
+        }
+        for (Cell cell : cells) {
+            btree.insert(cell);
         }
     }
 
-    public List<Integer> search(Object value) {
-        return indexMap.getOrDefault(value, Collections.emptyList());
+    public void insert(Object key, int rowId) throws IOException {
+        Cell cell = new IndexCell(
+                new IndexLeafCellHeader((byte) ((byte[]) key).length),
+                new IndexCellPayload(key, rowId)
+        );
+        btree.insert(cell);
     }
 
-    public String getColumnName() {
-        return columnName;
+    public void update(Object key, int rowId) throws IOException {
+        Cell cell = new IndexCell(
+                new IndexLeafCellHeader((byte) ((byte[]) key).length),
+                new IndexCellPayload(key, rowId)
+        );
+        btree.update(cell);
+    }
+
+    // key -> column value
+    public int search(Object key) throws IOException {
+        Optional<Cell> cellOptional = btree.search(key);
+        return cellOptional.map(cell -> cell.cellPayload().getRowId()).orElse(-1);
     }
 }

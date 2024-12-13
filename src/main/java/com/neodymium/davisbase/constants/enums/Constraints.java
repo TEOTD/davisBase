@@ -11,4 +11,8 @@ public enum Constraints {
     UNIQUE("UNIQUE");
 
     private final String value;
+
+    public String getValue() {
+        return value;
+    }
 }

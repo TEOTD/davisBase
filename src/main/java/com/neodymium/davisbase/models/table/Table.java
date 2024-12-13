@@ -2,14 +2,17 @@ package com.neodymium.davisbase.models.table;
 
 import com.neodymium.davisbase.constants.Constants;
 import com.neodymium.davisbase.constants.enums.Constraints;
+import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
 import com.neodymium.davisbase.models.Cell;
 import com.neodymium.davisbase.models.ConditionEvaluator;
 import com.neodymium.davisbase.models.ConditionParser;
-import com.neodymium.davisbase.models.index.BTree;
+import com.neodymium.davisbase.models.index.Index;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -19,114 +22,275 @@ import java.nio.file.Files;
 import java.util.*;
 
 /**
- * Represents a table in DavisBase.
+ * Represents a table in the DavisBase database.
  */
 @Getter
 @Setter
 @Slf4j
 public class Table {
-    private String tableName;
-    private List<Column> columns;
-    private Map<String, BTree> indexes;
-    private BPlusTree bPlusTree;
-    private File tableFile;
-    private String primaryKey;
-    private static final int PAGE_SIZE = 512;
+    private final String tableName;
+    private final List<Column> columns = new ArrayList<>();
+    private final Map<String, Index> indexes = new HashMap<>();
+    private final Map<String, String> indexColMap = new HashMap<>(); // key -> index name && value -> column name
+    private final BPlusTree bPlusTree;
+    private final String primaryKey;
+    private static final int PAGE_SIZE = Constants.PAGE_SIZE;
 
+    /**
+     * Constructor to create or load a table.
+     *
+     * @param tableName Name of the table.
+     * @param schema    Array of columns defining the table schema.
+     * @throws IOException If an I/O error occurs.
+     */
     public Table(String tableName, Column[] schema) throws IOException {
         this.tableName = tableName;
-        this.columns = Arrays.asList(schema);
-        this.indexes = new HashMap<>();
 
-        // Determine the primary key
+        // Identify the primary key
         this.primaryKey = Arrays.stream(schema)
-                .filter(column -> column.constraint() == Constraints.PRIMARY_KEY)
+                .filter(Column::isPrimaryKey)
                 .map(Column::name)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Table must have a PRIMARY KEY column"));
+                .orElse(null);
 
-        this.tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
+        File tableFile = new File(Constants.TABLE_DIRECTORY, tableName + Constants.TABLE_FILE_EXTENSION);
         if (!tableFile.exists()) {
-            initializeTableFile();
+            initializeTableFile(tableFile);
         }
 
         this.bPlusTree = new BPlusTree(new RandomAccessFile(tableFile, "rw"));
+        if(!StringUtils.isEmpty(this.primaryKey)){
+            createIndex(Constants.INDEX_DIRECTORY + tableName + "" + primaryKey + Constants.INDEX_FILE_EXTENSION, primaryKey);
+        }
+        if(schema.length !=0){
+            initializeColumnsFromSchema(schema);
+            addToMetadata();
+        }else {
+            initializeColumnsFromMetadata();
+        }
 
-        // Create the primary key index by default
-        createIndex(primaryKey);
 
-        // Register metadata
-        addToMetadata();
     }
 
     /**
-     * Checks if a table exists.
+     * Initializes the table file with a root page.
      */
-    public static boolean exists(String tableName) {
-        return new File(Constants.DATA_DIR + tableName + ".tbl").exists();
+    private void initializeTableFile(File tableFile) throws IOException {
+        if (tableFile.createNewFile()) {
+            bPlusTree.create();
+            log.info("Table file created for '{}'.", tableName);
+        } else {
+            throw new IOException("Failed to initialize table file: " + tableFile.getName());
+        }
     }
 
     /**
-     * Creates an index for a specified column.
+     * Initializes columns for a new table based on the given schema.
      */
-    public void createIndex(String columnName) throws IOException {
-        File indexFile = new File(Constants.DATA_DIR + tableName + "_" + columnName + ".idx");
-        if (!indexFile.exists()) {
-            if (!indexFile.createNewFile()) {
-                throw new IOException("Failed to create index file for column: " + columnName);
+    private void initializeColumnsFromSchema(Column[] schemaInfo) {
+        for (Column column : schemaInfo) {
+            addColumn(column.name(), column.dataType(), column.constraints());
+        }
+    }
+
+    /**
+     * Initializes columns for an existing table by reading metadata.
+     */
+    private void initializeColumnsFromMetadata() throws IOException {
+        File columnsCatalog = new File(Constants.COLUMN_CATALOG);
+        if (!columnsCatalog.exists()) {
+            throw new IllegalStateException("Metadata file does not exist: " + Constants.COLUMN_CATALOG);
+        }
+
+        List<String> metadataLines = Files.readAllLines(columnsCatalog.toPath());
+        for (String line : metadataLines) {
+            String[] parts = line.split("\\|");
+            if (parts.length != 7) continue;
+
+            String tableNameFromMeta = parts[3]; // Column 4 is the table name
+            if (tableName.equalsIgnoreCase(tableNameFromMeta)) {
+                String columnName = parts[1];
+                DataTypes dataType = DataTypes.valueOf(parts[4]);
+                Set<Constraints> constraints = parseConstraints(parts[6]);
+                addColumn(columnName, dataType, constraints);
             }
         }
-        indexes.put(columnName, new BTree(new RandomAccessFile(indexFile, "rw")));
-        log.info("Index created for column '{}'.", columnName);
     }
 
     /**
-     * Deletes an index for a specified column.
+     * Adds a column to the schema.
      */
-    public void dropIndex(String columnName) throws IOException {
-        File indexFile = new File(Constants.DATA_DIR + tableName + "_" + columnName + ".idx");
-        if (indexFile.exists() && !indexFile.delete()) {
-            throw new IOException("Failed to delete index file for column: " + columnName);
+    private void addColumn(String name, DataTypes dataType, Set<Constraints> constraints) {
+        if (constraints.contains(Constraints.PRIMARY_KEY)) {
+            if (this.primaryKey != null) {
+                throw new IllegalArgumentException("Table can have only one PRIMARY KEY column.");
+            }
         }
-        indexes.remove(columnName);
-        log.info("Index for column '{}' dropped.", columnName);
+        columns.add(new Column(name, dataType, constraints));
     }
 
     /**
-     * Inserts a new record into the table.
+     * Adds the table metadata to the system catalogs.
+     */
+    private void addToMetadata() throws IOException {
+        // Add an entry to davisbase_tables
+        File tablesCatalogFile = new File(Constants.TABLE_CATALOG);
+        if (!tablesCatalogFile.exists()) {
+            tablesCatalogFile.createNewFile();
+        }
+
+        try (FileWriter tableWriter = new FileWriter(tablesCatalogFile, true)) {
+            int recordCount = 0; // New table starts with zero records
+            short avgLength = 0; // Optional column, default to 0
+            short rootPage = 0;  // Optional column, default to 0
+            String row = String.format("%d|%s|%d|%d|%d\n",
+                    getNextRowId(tablesCatalogFile), tableName, recordCount, avgLength, rootPage);
+            tableWriter.write(row);
+        }
+
+        // Add an entry to davisbase_columns for each column
+        File columnsCatalogFile = new File(Constants.COLUMN_CATALOG);
+        if (!columnsCatalogFile.exists()) {
+            columnsCatalogFile.createNewFile();
+        }
+
+        try (FileWriter columnWriter = new FileWriter(columnsCatalogFile, true)) {
+            int tableRowId = getTableRowId(tableName, tablesCatalogFile); // Obtain the row ID of the table
+            int ordinalPosition = 1;
+            for (Column column : columns) {
+                String constraints = String.join(",", column.constraints().stream()
+                        .map(Constraints::getValue)
+                        .toList());
+                String row = String.format("%d|%s|%d|%s|%s|%d|%d\n",
+                        getNextRowId(columnsCatalogFile), column.name(), tableRowId, tableName,
+                        column.dataType().toString(), ordinalPosition++, constraints);
+                columnWriter.write(row);
+            }
+        }
+    }
+
+    private Set<Constraints> parseConstraints(String constraintsString) {
+        Set<Constraints> constraints = new HashSet<>();
+        if (constraintsString == null || constraintsString.isEmpty()) {
+            return constraints;
+        }
+        for (String constraint : constraintsString.split(",")) {
+            constraints.add(Constraints.valueOf(constraint));
+        }
+        return constraints;
+    }
+
+    /**
+     * Retrieves the next row ID for a catalog table.
+     */
+    private int getNextRowId(File catalogFile) throws IOException {
+        List<String> lines = Files.readAllLines(catalogFile.toPath());
+        return lines.size() + 1; // Assuming row IDs are sequential
+    }
+
+    /**
+     * Retrieves the row ID of the table from davisbase_tables.
+     */
+    private int getTableRowId(String tableName, File tablesCatalogFile) throws IOException {
+        List<String> lines = Files.readAllLines(tablesCatalogFile.toPath());
+        for (String line : lines) {
+            String[] parts = line.split("\\|");
+            if (parts[1].equalsIgnoreCase(tableName)) {
+                return Integer.parseInt(parts[0]);
+            }
+        }
+        throw new IllegalArgumentException("Table '" + tableName + "' not found in davisbase_tables.");
+    }
+
+
+    /**
+     * Inserts a record into the table.
      */
     public void insert(Map<String, Object> values) throws IOException {
         Map<Column, Object> rowData = new HashMap<>();
         for (Column column : columns) {
             Object value = values.get(column.name());
-            if (value == null && column.constraint() == Constraints.NOT_NULL) {
+
+            // Check NOT NULL constraint
+            if (value == null && column.constraints().contains(Constraints.NOT_NULL)) {
                 throw new DavisBaseException("NOT NULL constraint violated for column: " + column.name());
             }
+
+            // Check PRIMARY KEY constraint
+            if (column.constraints().contains(Constraints.PRIMARY_KEY)) {
+                if (value == null) {
+                    throw new DavisBaseException("PRIMARY KEY constraint violated: value cannot be null for column: " + column.name());
+                }
+                if (bPlusTree.search(value.toString()) != null) {
+                    throw new DavisBaseException("PRIMARY KEY constraint violated: duplicate value found for column: " + column.name());
+                }
+            }
+
+            // Check UNIQUE constraint
+            if (column.constraints().contains(Constraints.UNIQUE)) {
+                if (bPlusTree.searchByColumn(column.name(), value) != null) { // Assuming `searchByColumn` checks for uniqueness
+                    throw new DavisBaseException("UNIQUE constraint violated for column: " + column.name());
+                }
+            }
+
             rowData.put(column, value);
         }
 
-        Row row = new Row(rowData);
-        Object primaryKeyValue = values.get(primaryKey);
+        Row row = new Row(bPlusTree.getMaxRowId()+1, rowData);
+        bPlusTree.insert(Collections.singletonMap(this.primaryKey, row.cellFromRow()));
 
-        if (primaryKeyValue == null) {
-            throw new DavisBaseException("Primary key value cannot be null.");
+        /*
+        // Update indexes
+        if(!StringUtils.isEmpty(this.primaryKey)){
+            for (Map.Entry<String, BPlusTree> index : indexes.entrySet()) {
+                String columnName = index.getKey();
+                index.getValue().insert(this.primaryKey, values.get(columnName));
+            }
         }
 
-        Map<String, Cell> cellMap = new HashMap<>();
-        cellMap.put(primaryKeyValue.toString(), row.cellFromRow());
-        bPlusTree.insert(cellMap);
-
-        for (Map.Entry<String, BTree> indexEntry : indexes.entrySet()) {
-            String indexColumn = indexEntry.getKey();
-            BTree bTree = indexEntry.getValue();
-            bTree.insert(primaryKeyValue, values.get(indexColumn));
-        }
-
+         */
         log.info("Record inserted into table '{}'.", tableName);
     }
 
     /**
-     * Updates records matching a condition.
+     * Selects records based on conditions.
+     */
+    public List<Map<String, Object>> select(List<String> columnNames, String condition) throws IOException {
+        // Parse the condition into a structured format
+        Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
+
+        // Retrieve all matching cells from the B+-tree
+        List<Cell> matchingCells = bPlusTree.search();
+
+        // Prepare the result list
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        // Iterate over matching cells
+        for (Cell cell : matchingCells) {
+            Row row = Row.fromCell(cell, getColumnSchema());
+
+            // Check if the row matches the parsed conditions
+            if (ConditionEvaluator.evaluateRow(row, parsedConditions)) {
+                Map<String, Object> selectedRow = new HashMap<>();
+
+                // Collect specified columns
+                for (String columnName : columnNames) {
+                    Column column = getColumnByName(columnName);
+                    if (column == null) {
+                        throw new IllegalArgumentException("Column '" + columnName + "' does not exist.");
+                    }
+                    selectedRow.put(column.name(), row.data().get(column));
+                }
+
+                result.add(selectedRow);
+            }
+        }
+        return result;
+    }
+
+
+    /**
+     * Updates records based on conditions.
      */
     public int update(String condition, Map<String, Object> updates) throws IOException {
         Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
@@ -135,126 +299,116 @@ public class Table {
         int updatedCount = 0;
         for (Cell cell : matchingCells) {
             Row row = Row.fromCell(cell, getColumnSchema());
-
             if (ConditionEvaluator.evaluateRow(row, parsedConditions)) {
-                Object primaryKeyValue = row.data().get(getColumnByName(primaryKey));
+                //Object primaryKeyValue = row.data().get(getColumnByName(primaryKey));
+
+                // Apply updates and propagate to indexes
                 for (Map.Entry<String, Object> update : updates.entrySet()) {
                     Column column = getColumnByName(update.getKey());
-                    Object oldValue = row.data().get(column);
                     Object newValue = update.getValue();
-
-                    row.data().put(column, newValue);
-
-                    if (indexes.containsKey(column.name())) {
-                        indexes.get(column.name()).update(oldValue, newValue, primaryKeyValue);
+                    // Check NOT NULL constraint
+                    if (newValue == null && column.constraints().contains(Constraints.NOT_NULL)) {
+                        throw new DavisBaseException("NOT NULL constraint violated for column: " + column.name());
                     }
-                }
 
-                bPlusTree.update(row.cellFromRow(), primaryKeyValue.toString());
+                    // Check PRIMARY KEY constraint
+                    if (column.constraints().contains(Constraints.PRIMARY_KEY)) {
+                        if (newValue == null) {
+                            throw new DavisBaseException("PRIMARY KEY constraint violated: value cannot be null for column: " + column.name());
+                        }
+                        if (!newValue.equals(row.data().get(column)) && bPlusTree.search(newValue.toString()) != null) {
+                            throw new DavisBaseException("PRIMARY KEY constraint violated: duplicate value found for column: " + column.name());
+                        }
+                    }
+
+                    // Check UNIQUE constraint
+                    if (column.constraints().contains(Constraints.UNIQUE)) {
+                        if (!newValue.equals(row.data().get(column)) && bPlusTree.searchByColumn(column.name(), newValue) != null) {
+                            throw new DavisBaseException("UNIQUE constraint violated for column: " + column.name());
+                        }
+                    }
+                    row.data().put(column, newValue);
+                    /*
+                    if (indexes.containsKey(column.name())) {
+                        indexes.get(column.name()).update(primaryKeyValue.toString(), newValue);
+                    }
+
+                     */
+                }
+                bPlusTree.update(row.cellFromRow(), null);
                 updatedCount++;
             }
         }
-
-        log.info("{} records updated in '{}'.", updatedCount, tableName);
         return updatedCount;
     }
 
     /**
-     * Deletes records matching a condition.
+     * Deletes records based on conditions.
      */
     public int delete(String condition) throws IOException {
+        // Parse the condition
         Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
+
+        // Retrieve all matching cells from the B+-tree
         List<Cell> matchingCells = bPlusTree.search();
 
         int deletedCount = 0;
+
+        // Iterate over matching cells
         for (Cell cell : matchingCells) {
             Row row = Row.fromCell(cell, getColumnSchema());
+
+            // Check if the row matches the parsed conditions
             if (ConditionEvaluator.evaluateRow(row, parsedConditions)) {
-                Object primaryKeyValue = row.data().get(getColumnByName(primaryKey));
+                //Object primaryKeyValue = row.data().get(getColumnByName(primaryKey).orElseThrow());
+
+                // Delete the row from the B+-tree
                 bPlusTree.delete(cell.cellHeader().rowId());
                 deletedCount++;
-                // deleting index as per that deleted cell
                 /*
-                for (Map.Entry<String, BTree> indexEntry : indexes.entrySet()) {
-                    String indexColumn = indexEntry.getKey();
-                    BTree bTree = indexEntry.getValue();
-                    bTree.delete(primaryKeyValue, row.data().get(getColumnByName(indexColumn)));
+                // Update indexes if applicable
+                for (String columnName : indexes.keySet()) {
+                    Optional<Column> columnOpt = getColumnByName(columnName);
+                    if (columnOpt.isPresent()) {
+                        indexes.get(columnName).delete(primaryKeyValue.toString(), row.data().get(columnOpt.get()));
+                    }
                 }
 
                  */
             }
         }
-
-        log.info("{} records deleted from '{}'.", deletedCount, tableName);
         return deletedCount;
     }
 
-    /**
-     * Selects records matching a condition.
-     */
-    public List<Map<Column, Object>> select(List<String> columnNames, String condition) throws IOException {
-        Map<String, String> parsedConditions = ConditionParser.parseCondition(condition);
-        List<Cell> matchingCells = bPlusTree.search();
 
-        List<Map<Column, Object>> result = new ArrayList<>();
-        for (Cell cell : matchingCells) {
-            Row row = Row.fromCell(cell, getColumnSchema());
-            if (ConditionEvaluator.evaluateRow(row, parsedConditions)) {
-                Map<Column, Object> selectedRow = new HashMap<>();
-                for (String columnName : columnNames) {
-                    Column column = getColumnByName(columnName);
-                    selectedRow.put(column, row.data().get(column));
-                }
-                result.add(selectedRow);
+    /**
+     * Creates an index on a column.
+     */
+    // To-do : create and use mapping between index name and column name
+    public void createIndex(String indexName, String columnName) throws IOException {
+        //File indexFile = new File(Constants.INDEX_DIRECTORY, tableName + "_" + columnName + Constants.INDEX_FILE_EXTENSION);
+        File indexFile = new File(indexName + Constants.INDEX_FILE_EXTENSION);
+        if (!indexFile.exists()) {
+            if (!indexFile.createNewFile()) {
+                throw new IOException("Failed to create index file for column: " + columnName);
             }
         }
-
-        return result;
+        Index index = new Index(tableName, columnName, new RandomAccessFile(indexFile, "rw"));
+        index.create();
+        indexes.put(columnName, index);
+        indexColMap.put(indexName, columnName);
+        log.info("Index created for column {}.", columnName);
     }
 
     /**
-     * Initializes the table file structure.
-     */
-    private void initializeTableFile() throws IOException {
-        bPlusTree.create();
-        log.info("Table file initialized for '{}'.", tableName);
-    }
-
-    /**
-     * Adds table metadata to the system catalog.
-     */
-    private void addToMetadata() throws IOException {
-        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
-        if (!metadataFile.exists()) {
-            metadataFile.createNewFile();
-        }
-
-        try (FileWriter writer = new FileWriter(metadataFile, true)) {
-            writer.write(tableName + "\n");
-        }
-
-        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
-        if (!columnsFile.exists()) {
-            columnsFile.createNewFile();
-        }
-
-        try (FileWriter writer = new FileWriter(columnsFile, true)) {
-            for (Column column : columns) {
-                writer.write(tableName + "|" + column.name() + "|" + column.dataType() + "\n");
-            }
-        }
-    }
-
-
-    /**
-     * Retrieves a column schema map for use in deserialization.
+     * Retrieves a column schema map.
      */
     private Map<String, Column> getColumnSchema() {
-        Map<String, Column> columnSchema = new HashMap<>();
+        Map<String, Column> schema = new HashMap<>();
         for (Column column : columns) {
-            columnSchema.put(column.name(), column);
+            schema.put(column.name(), column);
         }
-        return columnSchema;
+        return schema;
     }
 
     /**
@@ -262,25 +416,28 @@ public class Table {
      */
     private Column getColumnByName(String columnName) {
         return columns.stream()
-                .filter(column -> column.name().equals(columnName))
+                .filter(column -> column.name().equalsIgnoreCase(columnName))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Column '" + columnName + "' does not exist."));
+                .orElseThrow(() -> new IllegalArgumentException("Column not found: " + columnName));
     }
+
     /**
-     * Drops a table, deleting the table file, all associated index files, and removing metadata.
+     * Drops a table by deleting its metadata and associated files.
+     *
+     * @throws IOException If there is an error accessing files.
      */
     public static void dropTable(String tableName) throws IOException {
         log.info("Dropping table '{}'.", tableName);
 
-        // Delete the table file
-        File tableFile = new File(Constants.DATA_DIR + tableName + ".tbl");
+        // Step 1: Delete the table file
+        File tableFile = new File(Constants.TABLE_DIRECTORY, tableName + Constants.TABLE_FILE_EXTENSION);
         if (tableFile.exists() && !tableFile.delete()) {
             throw new IOException("Failed to delete table file for table: " + tableName);
         }
-
-        // Delete all associated index files
-        File dataDir = new File(Constants.DATA_DIR);
-        File[] indexFiles = dataDir.listFiles((dir, name) -> name.startsWith(tableName + "_") && name.endsWith(".idx"));
+        /*
+        // Step 2: Delete all associated index files
+        File indexDirectory = new File(Constants.INDEX_DIRECTORY);
+        File[] indexFiles = indexDirectory.listFiles((dir, name) -> name.startsWith(tableName + "_") && name.endsWith(Constants.INDEX_FILE_EXTENSION));
         if (indexFiles != null) {
             for (File indexFile : indexFiles) {
                 if (!indexFile.delete()) {
@@ -289,32 +446,25 @@ public class Table {
             }
         }
 
-        // Remove metadata entries
-        removeFromMetadata(tableName);
+
+         */
+        // Step 3: Remove metadata from davisbase_tables
+        File tablesCatalog = new File(Constants.TABLE_CATALOG);
+        if (tablesCatalog.exists()) {
+            List<String> tableLines = Files.readAllLines(tablesCatalog.toPath());
+            tableLines.removeIf(line -> line.split("\\|")[1].equalsIgnoreCase(tableName));
+            Files.write(tablesCatalog.toPath(), tableLines);
+        }
+
+        // Step 4: Remove metadata from davisbase_columns
+        File columnsCatalog = new File(Constants.COLUMN_CATALOG);
+        if (columnsCatalog.exists()) {
+            List<String> columnLines = Files.readAllLines(columnsCatalog.toPath());
+            columnLines.removeIf(line -> line.split("\\|")[3].equalsIgnoreCase(tableName));
+            Files.write(columnsCatalog.toPath(), columnLines);
+        }
 
         log.info("Table '{}' and its associated metadata have been successfully dropped.", tableName);
     }
 
-    /**
-     * Removes table metadata from the system catalog.
-     */
-    private static void removeFromMetadata(String tableName) throws IOException {
-        // Remove from davisbase_tables.tbl
-        File metadataFile = new File(Constants.DATA_DIR + "davisbase_tables.tbl");
-        if (metadataFile.exists()) {
-            List<String> lines = Files.readAllLines(metadataFile.toPath());
-            lines.removeIf(line -> line.equalsIgnoreCase(tableName));
-            Files.write(metadataFile.toPath(), lines);
-        }
-
-        // Remove from davisbase_columns.tbl
-        File columnsFile = new File(Constants.DATA_DIR + "davisbase_columns.tbl");
-        if (columnsFile.exists()) {
-            List<String> lines = Files.readAllLines(columnsFile.toPath());
-            lines.removeIf(line -> line.startsWith(tableName + "|"));
-            Files.write(columnsFile.toPath(), lines);
-        }
-
-        log.info("Metadata for table '{}' removed from the system catalog.", tableName);
-    }
 }
