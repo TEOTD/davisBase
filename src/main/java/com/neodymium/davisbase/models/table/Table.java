@@ -552,10 +552,11 @@ public class Table {
             String columnName = (String) columnData.get("column_name");
             DataTypes dataType = DataTypes.valueOf((String) columnData.get("data_type"));
             Set<Constraints> constraints = parseConstraints((String) columnData.get("constraints"));
-
-
             addColumn(columnName, dataType, constraints);
         }
+
+        // Populate indexColMap by scanning the index directory
+        populateIndexColMap();
     }
 
     /**
@@ -590,5 +591,40 @@ public class Table {
         log.info("Index '{}' on column '{}' successfully dropped.", fullIndexName, columnName);
     }
 
+    private void populateIndexColMap() {
+        File indexDir = new File(INDEX_DIRECTORY);
+
+        // Validate that the index directory exists
+        if (!indexDir.exists() || !indexDir.isDirectory()) {
+            log.warn("Index directory '{}' does not exist or is not a directory.", INDEX_DIRECTORY);
+            return;
+        }
+
+        // Scan the directory for index files corresponding to the current table
+        File[] indexFiles = indexDir.listFiles((dir, name) -> name.startsWith(tableName + "-") && name.endsWith(INDEX_FILE_EXTENSION));
+        if (indexFiles == null || indexFiles.length == 0) {
+            log.info("No index files found for table '{}'.", tableName);
+            return;
+        }
+
+        // Populate the indexColMap
+        for (File indexFile : indexFiles) {
+            String fileName = indexFile.getName();
+            String[] parts = fileName.replace(INDEX_FILE_EXTENSION, "").split("-");
+
+            // Ensure the index file naming convention is correct
+            if (parts.length == 3) {
+                String tableNameFromFile = parts[0];
+                String columnName = parts[1];
+                String indexName = parts[2];
+
+                // Check if the table name matches
+                if (tableNameFromFile.equals(tableName)) {
+                    indexColMap.put(indexName, columnName);
+                    log.info("Index '{}' mapped to column '{}' for table '{}'.", indexName, columnName, tableName);
+                }
+            }
+        }
+    }
 
 }
