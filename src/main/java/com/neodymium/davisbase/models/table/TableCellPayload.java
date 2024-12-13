@@ -1,20 +1,17 @@
 package com.neodymium.davisbase.models.table;
 
-import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.models.CellPayload;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 @Data
 @AllArgsConstructor
 public class TableCellPayload implements CellPayload {
     private byte deletionFlag;
     private byte noOfColumns;
-    private List<DataTypes> dataTypes;
+    private byte[] typeCodes;
     private byte[] body;
 
     public static CellPayload deserialize(byte[] payloadBytes) {
@@ -29,16 +26,14 @@ public class TableCellPayload implements CellPayload {
             throw new IllegalArgumentException("Invalid payloadBytes: Negative column count");
         }
 
-        List<DataTypes> dataTypes = new ArrayList<>();
+        byte[] typeCodes = new byte[noOfColumns];
         for (int i = 0; i < noOfColumns; i++) {
-            if (buffer.remaining() < 4) {
+            if (buffer.remaining() < 1) {
                 throw new IllegalArgumentException("Invalid payloadBytes: Insufficient data for data type");
             }
-            int dataTypeId = buffer.getInt();
-            DataTypes dataType = DataTypes.getFromTypeCode(dataTypeId);
-            dataTypes.add(dataType);
+            typeCodes[i] = buffer.get();
         }
-        return new TableCellPayload(deletionFlag, noOfColumns, dataTypes, buffer.array());
+        return new TableCellPayload(deletionFlag, noOfColumns, typeCodes, buffer.array());
     }
 
     @Override
@@ -47,10 +42,7 @@ public class TableCellPayload implements CellPayload {
         ByteBuffer buffer = ByteBuffer.allocate(size);
         buffer.put(deletionFlag);
         buffer.put(noOfColumns);
-
-        for (DataTypes dataType : dataTypes) {
-            buffer.putInt(dataType.getTypeCode());
-        }
+        buffer.put(typeCodes);
         buffer.put(body);
         return buffer.array();
     }
@@ -76,6 +68,6 @@ public class TableCellPayload implements CellPayload {
     }
 
     public int getSize() {
-        return 2 + dataTypes.size() + body.length;
+        return 2 + typeCodes.length + body.length;
     }
 }

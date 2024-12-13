@@ -130,7 +130,7 @@ public class Table {
      */
     private void initializeColumnsFromSchema(List<Column> schemaInfo) {
         for (Column column : schemaInfo) {
-            addColumn(column.name(), column.dataType(), column.constraints());
+            addColumn(column.name(), column.typeCode(), column.constraints());
         }
     }
 
@@ -153,7 +153,7 @@ public class Table {
                 String columnName = parts[1];
                 DataTypes dataType = DataTypes.valueOf(parts[4]);
                 Set<Constraints> constraints = parseConstraints(parts[6]);
-                addColumn(columnName, dataType, constraints);
+                addColumn(columnName, dataType.getSizeInBytes(), constraints);
             }
         }
     }
@@ -161,12 +161,12 @@ public class Table {
     /**
      * Adds a column to the schema.
      */
-    private void addColumn(String name, DataTypes dataType, Set<Constraints> constraints) {
+    private void addColumn(String name, byte typeCode, Set<Constraints> constraints) {
         if (constraints.contains(Constraints.PRIMARY_KEY) && this.primaryKey != null) {
             throw new IllegalArgumentException("Table can have only one PRIMARY KEY column.");
         }
 
-        columns.add(new Column(name, dataType, constraints));
+        columns.add(new Column(name, typeCode, constraints));
     }
 
     /**
@@ -260,14 +260,14 @@ public class Table {
                 if (value == null) {
                     throw new DavisBaseException("PRIMARY KEY constraint violated: value cannot be null for column: " + column.name());
                 }
-                if (bPlusTree.search(value.toString()) != null) {
+                if (bPlusTree.searchColumn(column, value).isPresent()) {
                     throw new DavisBaseException("PRIMARY KEY constraint violated: duplicate value found for column: " + column.name());
                 }
             }
 
             // Check UNIQUE constraint
             if (column.constraints().contains(Constraints.UNIQUE)) {
-                if (bPlusTree.searchByColumn(column.name(), value) != null) { // Assuming `searchByColumn` checks for uniqueness
+                if (bPlusTree.searchColumn(column, value).isPresent()) { // Assuming `searchByColumn` checks for uniqueness
                     throw new DavisBaseException("UNIQUE constraint violated for column: " + column.name());
                 }
             }
@@ -354,14 +354,14 @@ public class Table {
                         if (newValue == null) {
                             throw new DavisBaseException("PRIMARY KEY constraint violated: value cannot be null for column: " + column.name());
                         }
-                        if (!newValue.equals(row.data().get(column)) && bPlusTree.search(newValue.toString()) != null) {
+                        if (!newValue.equals(row.data().get(column)) && bPlusTree.searchColumn(column, newValue).isPresent()) {
                             throw new DavisBaseException("PRIMARY KEY constraint violated: duplicate value found for column: " + column.name());
                         }
                     }
 
                     // Check UNIQUE constraint
                     if (column.constraints().contains(Constraints.UNIQUE)) {
-                        if (!newValue.equals(row.data().get(column)) && bPlusTree.searchByColumn(column.name(), newValue) != null) {
+                        if (!newValue.equals(row.data().get(column)) && bPlusTree.searchColumn(column, newValue).isPresent()) {
                             throw new DavisBaseException("UNIQUE constraint violated for column: " + column.name());
                         }
                     }

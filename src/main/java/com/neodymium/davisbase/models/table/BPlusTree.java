@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -265,5 +266,13 @@ public class BPlusTree {
     public int getMaxRowId() throws IOException {
         Page rightmostPage = findRightmostLeafPage();
         return rightmostPage.getMaxRowId();
+    }
+
+    public Optional<Cell> searchColumn(Column column, Object value) throws IOException {
+        List<Cell> cells = search();
+        Row row = new Row(getMaxRowId() + 1, Map.of(column, value));
+        Cell cell = row.cellFromRow();
+        return cells.stream().filter(c -> Arrays.equals(c.cellPayload().serialize(), cell.cellPayload().serialize()))
+                .findFirst();
     }
 }
