@@ -35,8 +35,6 @@ public class DMLProcessor {
         }
     }
 
-    
-
     public void insertIntoTable(String insertDefinition) throws IOException {
         String[] parts = insertDefinition.split("\\s+VALUES\\s+", 2);
         if (parts.length < 2) {
