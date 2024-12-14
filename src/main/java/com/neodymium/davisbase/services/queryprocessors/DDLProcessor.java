@@ -7,6 +7,7 @@ import com.neodymium.davisbase.models.table.Table;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ObjectUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,7 +39,7 @@ public class DDLProcessor {
 
     public void createTable(String tableDefinition) throws IOException {
         String[] parts = tableDefinition.split("\\(", 2);
-        if (parts.length < 2) {
+        if (parts.length < 2 || ObjectUtils.isEmpty(parts[0])) {
             throw new IllegalArgumentException("Invalid CREATE TABLE syntax.");
         }
         String tableName = parts[0].trim();
@@ -67,7 +68,10 @@ public class DDLProcessor {
         table.createIndex(indexName, columnName);
     }
 
-    public void dropIndex(String indexName) throws IOException {
+    public void dropIndex(String query) throws IOException {
+        String[] parts = query.split("(?i)\\bon\\b");
+        String indexName = parts[0].trim();
+        String tableName = parts[1].trim();
         Table.dropIndex(indexName);
     }
 
@@ -75,12 +79,12 @@ public class DDLProcessor {
         List<Column> columns = new ArrayList<>();
         String[] columnParts = columnDefinition.split(",");
         for (String part : columnParts) {
-            String[] nameAndTypeConstraint = part.trim().split(" ");
+            String[] nameAndTypeConstraint = part.trim().split(" ", 3);
             Set<Constraints> constraint = new HashSet<>();
             if (nameAndTypeConstraint.length > 2) {
-                boolean containsPk = nameAndTypeConstraint[2].contains(Constraints.PRIMARY_KEY.getValue());
-                boolean containsUnique = nameAndTypeConstraint[2].contains(Constraints.UNIQUE.getValue());
-                boolean containsNotNull = nameAndTypeConstraint[2].contains(Constraints.NOT_NULL.getValue());
+                boolean containsPk = nameAndTypeConstraint[2].toLowerCase().contains(Constraints.PRIMARY_KEY.getValue().toLowerCase());
+                boolean containsUnique = nameAndTypeConstraint[2].toLowerCase().contains(Constraints.UNIQUE.getValue().toLowerCase());
+                boolean containsNotNull = nameAndTypeConstraint[2].toLowerCase().contains(Constraints.NOT_NULL.getValue().toLowerCase());
                 if (containsPk) {
                     constraint.add(Constraints.PRIMARY_KEY);
                 }

@@ -31,7 +31,7 @@ public class Index {
         }
         btree.create();
         Table table = new Table(tableName, null);
-        List<Map<String, Object>> result = table.select(List.of("rowId", columnName), null);
+        List<Map<String, Object>> result = table.select(List.of("rowid", columnName), null);
         List<Cell> cells = new ArrayList<>();
         for (Map<String, Object> row : result) {
             Integer rowId = null;
@@ -41,7 +41,7 @@ public class Index {
                 String column = entry.getKey();
                 Object value = entry.getValue();
 
-                if (column.equals("rowId")) {
+                if (column.equals("rowid")) {
                     rowId = (Integer) value;
                 } else if (column.equals(columnName)) {
                     columnValue = value;

@@ -26,9 +26,6 @@ public class DMLProcessor {
         } else if (query.toUpperCase().startsWith("DELETE FROM")) {
             String deleteDefinition = query.substring("DELETE FROM".length()).trim();
             deleteFromTable(deleteDefinition);
-        } else if (query.toUpperCase().startsWith("DROP TABLE")) {
-            String tableName = query.substring("DROP TABLE".length()).trim();
-            dropTable(tableName);
         } else if (query.toUpperCase().startsWith("UPDATE")) {
             String updateDefinition = query.substring("UPDATE".length()).trim();
             updateTable(updateDefinition);
@@ -69,7 +66,6 @@ public class DMLProcessor {
             map.put(column.name(), values[index++]);
         }
         table.insert(map);
-
     }
 
     public void deleteFromTable(String deleteDefinition) throws IOException {
@@ -78,10 +74,6 @@ public class DMLProcessor {
         String condition = parts.length > 1 ? parts[1].trim() : null;
         Table table = new Table(tableName, List.of());
         table.delete(condition);
-    }
-
-    public void dropTable(String tableName) throws IOException {
-        Table.drop(tableName);
     }
 
     public void updateTable(String updateDefinition) throws IOException {
