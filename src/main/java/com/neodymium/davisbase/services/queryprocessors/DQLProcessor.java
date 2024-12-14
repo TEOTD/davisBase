@@ -54,7 +54,7 @@ public class DQLProcessor {
     }
 
     public void select(String query) throws IOException {
-        String[] parts = query.split("FROM", 2);
+        String[] parts = query.split("(?i)\\bfrom\\b", 2);
         if (parts.length < 2) {
             throw new IllegalArgumentException("Invalid SELECT query syntax.");
         }
@@ -64,7 +64,7 @@ public class DQLProcessor {
 
         List<String> columns = parseColumns(columnSplit);
 
-        String[] tableParts = tableSplit.split("WHERE", 2);
+        String[] tableParts = tableSplit.split("(?i)\\bwhere\\b", 2);
         String tableName = tableParts[0].trim();
 
         String condition = tableParts.length > 1 ? tableParts[1].trim() : null;
@@ -84,12 +84,12 @@ public class DQLProcessor {
         }
     }
 
-    private List<String> parseColumns(String column_split) {
+    private List<String> parseColumns(String columnSplit) {
         List<String> columns = new ArrayList<>();
-        if (column_split.equals("*")) {
+        if (columnSplit.equals("*")) {
             columns.add("*");
         } else {
-            String[] columnNames = column_split.split(",");
+            String[] columnNames = columnSplit.split(",");
             for (String columnName : columnNames) {
                 columns.add(columnName.trim());
             }

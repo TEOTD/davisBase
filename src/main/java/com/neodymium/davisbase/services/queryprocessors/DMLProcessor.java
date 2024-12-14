@@ -38,7 +38,7 @@ public class DMLProcessor {
     }
 
     public void insertIntoTable(String insertDefinition) throws IOException {
-        String[] parts = insertDefinition.split("\\s+VALUES\\s+", 2);
+        String[] parts = insertDefinition.split("(?i)\\bvalues\\b", 2);
         if (parts.length < 2) {
             throw new IllegalArgumentException("Invalid INSERT INTO syntax.");
         }
@@ -73,7 +73,7 @@ public class DMLProcessor {
     }
 
     public void deleteFromTable(String deleteDefinition) throws IOException {
-        String[] parts = deleteDefinition.split("\\s+WHERE\\s+", 2);
+        String[] parts = deleteDefinition.split("(?i)\\bwhere\\b", 2);
         String tableName = parts[0].trim();
         String condition = parts.length > 1 ? parts[1].trim() : null;
         Table table = new Table(tableName, List.of());
@@ -86,7 +86,7 @@ public class DMLProcessor {
 
     public void updateTable(String updateDefinition) throws IOException {
         // Split the update definition into parts
-        String[] parts = updateDefinition.split("\\s+SET\\s+", 2);
+        String[] parts = updateDefinition.split("(?i)\\bset\\b", 2);
         if (parts.length < 2) {
             throw new IllegalArgumentException("Invalid UPDATE syntax.");
         }
@@ -99,7 +99,7 @@ public class DMLProcessor {
         String[] assignments = setClause.split("\\s*,\\s*");
 
         // Extract the WHERE clause if it exists
-        String[] whereParts = setClause.split("\\s+WHERE\\s+", 2);
+        String[] whereParts = setClause.split("(?i)\\bwhere\\b", 2);
         String condition = whereParts.length > 1 ? whereParts[1].trim() : null;
 
         // Get the table object

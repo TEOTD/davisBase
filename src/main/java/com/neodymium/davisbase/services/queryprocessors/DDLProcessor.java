@@ -63,7 +63,7 @@ public class DDLProcessor {
         String tableName = tableNameAndColumnParts[0].trim();
         String columnName = tableNameAndColumnParts[1].replace(")", "").trim();
 
-        Table table = new Table(tableName, null);
+        Table table = new Table(tableName, List.of());
         table.createIndex(indexName, columnName);
     }
 
