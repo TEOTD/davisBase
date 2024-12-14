@@ -38,9 +38,22 @@ public class DMLProcessor {
         }
         String tableName = parts[0].trim();
         String valuesDefinition = parts[1].replace("(", "").replace(")", "").trim();
-        String [] values = valuesDefinition.split(",");
-        Table table = new Table(tableName, values); // Is this logic right for interaction with the table.java
-        table.insert(query_table.put(tableName,values)); // insert the hashmap object.
+        String [] values = valuesDefinition.split("\\s*,\\s*");
+
+        //if columns are provided:
+        String[] columns = null;
+        if(tableName.contains("(")) && tableName.contains(")")){
+            int indexOpenParen = tableName.indexOf('(');
+            int indexCloseParen = tableName.indexOf(')');
+            if(indexOpenParen < indexCloseParen){
+                String columns_split = tableName.substring(indexOpenParen+1,indexCloseParen);
+                columns = columns_split.split("\\s*,\\s*");
+                tableName = tableName.substring(0,indexOpenParen).trim();
+            }
+
+        }
+        Table table = new Table(tableName, values);
+        table.insert(query_table.put(columns,values));
     }
 
     public void deleteFromTable(String deleteDefinition) throws IOException {
