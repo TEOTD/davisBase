@@ -1,6 +1,5 @@
 package com.neodymium.davisbase.models.table;
 
-import com.neodymium.davisbase.constants.Constants;
 import com.neodymium.davisbase.constants.enums.Constraints;
 import com.neodymium.davisbase.constants.enums.DataTypes;
 import com.neodymium.davisbase.error.DavisBaseException;
@@ -63,7 +62,7 @@ public class Table {
                 .findFirst()
                 .orElse(null);
 
-        File tableFile = new File(TABLE_DIRECTORY, tableName + TABLE_FILE_EXTENSION);
+        File tableFile = new File(TABLE_DIRECTORY + tableName + TABLE_FILE_EXTENSION);
         if (!tableFile.exists()) {
             initializeTableFile(tableFile);
         }
@@ -138,14 +137,53 @@ public class Table {
     }
 
     /**
+     * Drops an index on a specified column.
+     *
+     * @param indexName The name of the index to drop.
+     * @throws IOException If an error occurs while deleting the index.
+     */
+    public static void dropIndex(String indexName) throws IOException {
+        // Construct the expected file name pattern
+        File indexDir = new File(INDEX_DIRECTORY);
+        if (!indexDir.exists() || !indexDir.isDirectory()) {
+            throw new IllegalStateException("Index directory does not exist: " + INDEX_DIRECTORY);
+        }
+
+        // Find the index file matching the provided index name
+        File[] matchingFiles = indexDir.listFiles((dir, name) -> name.endsWith("-" + indexName + INDEX_FILE_EXTENSION));
+        if (matchingFiles == null || matchingFiles.length == 0) {
+            throw new IllegalArgumentException("Index '" + indexName + "' does not exist.");
+        }
+
+        // There should only be one file matching the index name
+        File indexFile = matchingFiles[0];
+        if (indexFile.exists() && !indexFile.delete()) {
+            throw new IOException("Failed to delete index file for index: " + indexFile.getName());
+        }
+
+        log.info("Index '{}' successfully dropped.", indexName);
+    }
+
+    /**
      * Initializes the table file with a root page.
      */
     private void initializeTableFile(File tableFile) throws IOException {
+        File parentDir = tableFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            if (!parentDir.mkdirs()) {
+                throw new IOException("Failed to create parent directories for: " + tableFile.getPath());
+            }
+        }
         if (tableFile.createNewFile()) {
-            bPlusTree.create();
-            log.info("Table file created for '{}'.", tableName);
-        } else {
-            throw new IOException("Failed to initialize table file: " + tableFile.getName());
+            try (RandomAccessFile randomAccessFile = new RandomAccessFile(tableFile, "rw")) {
+                BPlusTree bPlusTree = new BPlusTree(randomAccessFile);
+                bPlusTree.create();
+                log.info("Table file created for '{}'.", tableName);
+            } catch (IOException e) {
+                throw new IOException("Failed to initialize BPlusTree for: " + tableFile.getPath(), e);
+            }
+        } else if (!tableFile.exists()) {
+            throw new IOException("Failed to create or find the table file: " + tableFile.getPath());
         }
     }
 
@@ -168,7 +206,6 @@ public class Table {
 
         columns.add(new Column(name, typeCode, constraints));
     }
-
 
     private Set<Constraints> parseConstraints(String constraintsString) {
         Set<Constraints> constraints = new HashSet<>();
@@ -402,7 +439,7 @@ public class Table {
         //File indexFile = new File(Constants.INDEX_DIRECTORY, tableName + "_" + columnName + Constants.INDEX_FILE_EXTENSION);
         // Construct the index file name
         String fullIndexName = tableName + "-" + columnName + "-" + indexName;
-        File indexFile = new File( INDEX_DIRECTORY + fullIndexName + INDEX_FILE_EXTENSION);
+        File indexFile = new File(INDEX_DIRECTORY + fullIndexName + INDEX_FILE_EXTENSION);
         // Check if the index file already exists
         if (indexFile.exists()) {
             throw new IllegalArgumentException("Index file '" + fullIndexName + "' already exists.");
@@ -506,33 +543,6 @@ public class Table {
         populateIndexColMap();
     }
 
-    /**
-     * Drops an index on a specified column.
-     *
-     * @param indexName The name of the index to drop.
-     * @throws IOException If an error occurs while deleting the index.
-     */
-    public static void dropIndex(String indexName) throws IOException {
-        // Construct the expected file name pattern
-        File indexDir = new File(INDEX_DIRECTORY);
-        if (!indexDir.exists() || !indexDir.isDirectory()) {
-            throw new IllegalStateException("Index directory does not exist: " + INDEX_DIRECTORY);
-        }
-
-        // Find the index file matching the provided index name
-        File[] matchingFiles = indexDir.listFiles((dir, name) -> name.endsWith("-" + indexName + INDEX_FILE_EXTENSION));
-        if (matchingFiles == null || matchingFiles.length == 0) {
-            throw new IllegalArgumentException("Index '" + indexName + "' does not exist.");
-        }
-
-        // There should only be one file matching the index name
-        File indexFile = matchingFiles[0];
-        if (indexFile.exists() && !indexFile.delete()) {
-            throw new IOException("Failed to delete index file for index: " + indexFile.getName());
-        }
-
-        log.info("Index '{}' successfully dropped.", indexName);
-    }
     private void populateIndexColMap() {
         File indexDir = new File(INDEX_DIRECTORY);
 
