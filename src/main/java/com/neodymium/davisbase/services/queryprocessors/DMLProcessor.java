@@ -1,6 +1,7 @@
 package com.neodymium.davisbase.services.queryprocessors;
 
 import com.neodymium.davisbase.constants.enums.Constraints;
+import com.neodymium.davisbase.error.DavisBaseException;
 import com.neodymium.davisbase.models.table.Column;
 import com.neodymium.davisbase.models.table.Table;
 import lombok.AllArgsConstructor;
@@ -9,14 +10,15 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
 @Slf4j
 @Service
 @AllArgsConstructor
 public class DMLProcessor {
-    private static final Map<String,Object> query_table = new HashMap<>();
     public void process(String query) throws IOException {
         if (query.toUpperCase().startsWith("INSERT INTO")) {
             String insertDefinition = query.substring("INSERT INTO".length()).trim();
@@ -42,30 +44,40 @@ public class DMLProcessor {
         }
         String tableName = parts[0].trim();
         String valuesDefinition = parts[1].replace("(", "").replace(")", "").trim();
-        String [] values = valuesDefinition.split("\\s*,\\s*");
+        String[] values = valuesDefinition.split("\\s*,\\s*");
 
         //if columns are provided:
         String[] columns = null;
-        if(tableName.contains("(") && tableName.contains(")")){
+        if (tableName.contains("(") && tableName.contains(")")) {
             int indexOpenParen = tableName.indexOf('(');
             int indexCloseParen = tableName.indexOf(')');
-            if(indexOpenParen < indexCloseParen){
-                String columns_split = tableName.substring(indexOpenParen+1,indexCloseParen);
-                columns = columns_split.split("\\s*,\\s*");
-                tableName = tableName.substring(0,indexOpenParen).trim();
+            if (indexOpenParen < indexCloseParen) {
+                String columnsSplit = tableName.substring(indexOpenParen + 1, indexCloseParen);
+                columns = columnsSplit.split("\\s*,\\s*");
+                tableName = tableName.substring(0, indexOpenParen).trim();
             }
 
         }
-        Table table = new Table(tableName, values);
-        query_table.put(tableName, values);
-        table.insert(query_table);
+        Table table = new Table(tableName, List.of());
+        List<Column> columnList = table.getColumns();
+        if (values.length != columnList.size()) {
+            throw new DavisBaseException("The number of values does not match the number of columns.");
+        }
+        Map<String, Object> map = new HashMap<>();
+        int index = 0;
+        for (Column column : columnList) {
+            map.put(column.name(), values[index++]);
+        }
+        table.insert(map);
+
     }
 
     public void deleteFromTable(String deleteDefinition) throws IOException {
         String[] parts = deleteDefinition.split("\\s+WHERE\\s+", 2);
         String tableName = parts[0].trim();
         String condition = parts.length > 1 ? parts[1].trim() : null;
-        Table.delete(condition);
+        Table table = new Table(tableName, List.of());
+        table.delete(condition);
     }
 
     public void dropTable(String tableName) throws IOException {
@@ -91,8 +103,9 @@ public class DMLProcessor {
         String condition = whereParts.length > 1 ? whereParts[1].trim() : null;
 
         // Get the table object
-        Table table = new Table(tableName);
+        Table table = new Table(tableName, List.of());
 
+        Map<String, Object> updatesMap = new HashMap<>();
         // Process each assignment
         for (String assignment : assignments) {
             String[] keyValue = assignment.split("\\s*=\\s*", 2);
@@ -104,22 +117,24 @@ public class DMLProcessor {
             String newValue = keyValue[1].trim();
 
             // Check if the column exists and if the new value is valid
-            Column column = table.getColumn(columnName);
-            if (column == null) {
+            Optional<Column> column = table.getColumns().stream()
+                    .filter(c -> c.name().equals(columnName))
+                    .findFirst();
+
+            if (column.isEmpty()) {
                 throw new IllegalArgumentException("Column '" + columnName + "' does not exist in table '" + tableName + "'.");
             }
 
             // Check constraints (e.g., NOT NULL, PRIMARY KEY)
-            if (column.getConstraints().contains(Constraints.NOT_NULL) && "NULL".equalsIgnoreCase(newValue)) {
+            if (column.get().constraints().contains(Constraints.NOT_NULL) && "NULL".equalsIgnoreCase(newValue)) {
                 throw new IllegalArgumentException("Column '" + columnName + "' cannot be NULL.");
             }
 
-            if (column.getConstraints().contains(Constraints.PRIMARY_KEY) && "NULL".equalsIgnoreCase(newValue)) {
+            if (column.get().constraints().contains(Constraints.PRIMARY_KEY) && "NULL".equalsIgnoreCase(newValue)) {
                 throw new IllegalArgumentException("Primary key column '" + columnName + "' cannot be NULL.");
             }
-
-            // Update the column value
-            table.updateColumn(columnName, newValue, condition);
+            updatesMap.put(columnName, newValue);
         }
+        table.update(condition, updatesMap);
     }
 }
