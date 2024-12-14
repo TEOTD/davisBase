@@ -565,32 +565,27 @@ public class Table {
      * @param indexName The name of the index to drop.
      * @throws IOException If an error occurs while deleting the index.
      */
-    public void dropIndex(String indexName) throws IOException {
-
-        // Construct the full index name
-        String fullIndexName = indexColMap.keySet().stream()
-                .filter(key -> key.endsWith(indexName))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Index '" + indexName + "' does not exist."));
-
-        // Get the column name associated with the index
-        String columnName = indexColMap.get(fullIndexName);
-
-        // Remove the index from the indexes map
-        indexes.remove(columnName);
-
-        // Remove the index file
-        File indexFile = new File(INDEX_DIRECTORY, fullIndexName + INDEX_FILE_EXTENSION);
-        if (indexFile.exists() && !indexFile.delete()) {
-            throw new IOException("Failed to delete index file for index: " + fullIndexName);
+    public static void dropIndex(String indexName) throws IOException {
+        // Construct the expected file name pattern
+        File indexDir = new File(INDEX_DIRECTORY);
+        if (!indexDir.exists() || !indexDir.isDirectory()) {
+            throw new IllegalStateException("Index directory does not exist: " + INDEX_DIRECTORY);
         }
 
-        // Remove the index entry from the indexColMap
-        indexColMap.remove(fullIndexName);
+        // Find the index file matching the provided index name
+        File[] matchingFiles = indexDir.listFiles((dir, name) -> name.endsWith("-" + indexName + INDEX_FILE_EXTENSION));
+        if (matchingFiles == null || matchingFiles.length == 0) {
+            throw new IllegalArgumentException("Index '" + indexName + "' does not exist.");
+        }
 
-        log.info("Index '{}' on column '{}' successfully dropped.", fullIndexName, columnName);
+        // There should only be one file matching the index name
+        File indexFile = matchingFiles[0];
+        if (indexFile.exists() && !indexFile.delete()) {
+            throw new IOException("Failed to delete index file for index: " + indexFile.getName());
+        }
+
+        log.info("Index '{}' successfully dropped.", indexName);
     }
-
     private void populateIndexColMap() {
         File indexDir = new File(INDEX_DIRECTORY);
 
