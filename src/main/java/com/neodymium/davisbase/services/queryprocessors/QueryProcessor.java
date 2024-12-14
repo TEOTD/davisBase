@@ -1,8 +1,9 @@
 package com.neodymium.davisbase.services.queryprocessors;
 
+import org.springframework.stereotype.Service;
+
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -45,7 +46,7 @@ public class QueryProcessor {
         command = command.toUpperCase();
         if (command.startsWith("CREATE") || command.startsWith("DROP") || command.startsWith("ALTER")) {
             return "DDL";
-        } else if (command.startsWith("INSERT") || command.startsWith("UPDATE") || command.startsWith("DELETE")) {
+        } else if (command.startsWith("INSERT") || command.startsWith("UPDATE") || command.startsWith("DELETE")|| command.startsWith("DROP")) {
             return "DML";
         } else if (command.startsWith("SELECT") || command.startsWith("SHOW") || command.startsWith("HELP")) {
             return "DQL";
