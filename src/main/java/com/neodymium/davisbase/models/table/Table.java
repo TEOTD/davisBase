@@ -150,33 +150,6 @@ public class Table {
     }
 
     /**
-     * Initializes columns for an existing table by reading metadata.
-     */
-    /*
-    private void initializeColumnsFromMetadata() throws IOException {
-        File columnsCatalog = new File(COLUMN_CATALOG);
-        if (!columnsCatalog.exists()) {
-            throw new IllegalStateException("Metadata file does not exist: " + COLUMN_CATALOG);
-        }
-
-        List<String> metadataLines = Files.readAllLines(columnsCatalog.toPath());
-        for (String line : metadataLines) {
-            String[] parts = line.split("\\|");
-            if (parts.length != 7) continue;
-
-            String tableNameFromMeta = parts[3]; // Column 4 is the table name
-            if (tableName.equalsIgnoreCase(tableNameFromMeta)) {
-                String columnName = parts[1];
-                DataTypes dataType = DataTypes.valueOf(parts[4]);
-                Set<Constraints> constraints = parseConstraints(parts[6]);
-                addColumn(columnName, dataType.getSizeInBytes(), constraints);
-            }
-        }
-    }
-
-     */
-
-    /**
      * Initializes columns for a new table based on the given schema.
      */
     private void initializeColumnsFromSchema(List<Column> schemaInfo) {
@@ -196,48 +169,7 @@ public class Table {
         columns.add(new Column(name, typeCode, constraints));
     }
 
-    /**
-     * Adds the table metadata to the system catalogs.
-     */
-    /*
-    private void addToMetadata() throws IOException {
-        // Add an entry to davisbase_tables
-        File tablesCatalogFile = new File(TABLE_CATALOG);
-        if (!tablesCatalogFile.exists()) {
-            tablesCatalogFile.createNewFile();
-        }
 
-        try (FileWriter tableWriter = new FileWriter(tablesCatalogFile, true)) {
-            int recordCount = 0; // New table starts with zero records
-            short avgLength = 0; // Optional column, default to 0
-            short rootPage = 0;  // Optional column, default to 0
-            String row = String.format("%d|%s|%d|%d|%d\n",
-                    getNextRowId(tablesCatalogFile), tableName, recordCount, avgLength, rootPage);
-            tableWriter.write(row);
-        }
-
-        // Add an entry to davisbase_columns for each column
-        File columnsCatalogFile = new File(COLUMN_CATALOG);
-        if (!columnsCatalogFile.exists()) {
-            columnsCatalogFile.createNewFile();
-        }
-
-        try (FileWriter columnWriter = new FileWriter(columnsCatalogFile, true)) {
-            int tableRowId = getTableRowId(tableName, tablesCatalogFile); // Obtain the row ID of the table
-            int ordinalPosition = 1;
-            for (Column column : columns) {
-                String constraints = String.join(",", column.constraints().stream()
-                        .map(Constraints::getValue)
-                        .toList());
-                String row = String.format("%d|%s|%d|%s|%s|%d|%d\n",
-                        getNextRowId(columnsCatalogFile), column.name(), tableRowId, tableName,
-                        column.dataType().toString(), ordinalPosition++, constraints);
-                columnWriter.write(row);
-            }
-        }
-    }
-
-     */
     private Set<Constraints> parseConstraints(String constraintsString) {
         Set<Constraints> constraints = new HashSet<>();
         if (constraintsString == null || constraintsString.isEmpty()) {
@@ -307,16 +239,31 @@ public class Table {
         Row row = new Row(bPlusTree.getMaxRowId() + 1, rowData);
         bPlusTree.insert(Collections.singletonMap(this.primaryKey, row.cellFromRow()));
 
-        /*
         // Update indexes
-        if(!StringUtils.isEmpty(this.primaryKey)){
-            for (Map.Entry<String, BPlusTree> index : indexes.entrySet()) {
-                String columnName = index.getKey();
-                index.getValue().insert(this.primaryKey, values.get(columnName));
+        for (Map.Entry<String, Index> entry : indexes.entrySet()) {
+            String columnName = entry.getKey();
+            Index index = entry.getValue();
+            Object value = rowData.get(getColumnByName(columnName));
+            if (value != null) {
+                index.insert(value, row.id());
             }
         }
 
-         */
+        // Update indexes
+        for (Map.Entry<String, String> entry : indexColMap.entrySet()) {
+            String indexName = entry.getKey(); // Get the index name
+            String columnName = entry.getValue(); // Get the column name associated with the index
+            Index index = indexes.get(indexName); // Retrieve the Index object using the index name
+
+            if (index != null) {
+                Object value = rowData.get(getColumnByName(columnName)); // Get the value for the column
+                if (value != null) {
+                    index.insert(value, row.id()); // Insert into the index
+                }
+            }
+        }
+
+
         log.info("Record inserted into table '{}'.", tableName);
     }
 
@@ -395,12 +342,22 @@ public class Table {
                         }
                     }
                     row.data().put(column, newValue);
-                    /*
-                    if (indexes.containsKey(column.name())) {
-                        indexes.get(column.name()).update(primaryKeyValue.toString(), newValue);
+
+                    // Update the index
+                    if (indexColMap.containsValue(column.name())) {
+                        // Retrieve the index name associated with the column name
+                        String indexName = indexColMap.entrySet().stream()
+                                .filter(entry -> entry.getValue().equals(column.name()))
+                                .map(Map.Entry::getKey)
+                                .findFirst()
+                                .orElse(null);
+
+                        if (indexName != null && indexes.containsKey(indexName)) {
+                            // Update the index using the new value and the row ID
+                            indexes.get(indexName).update(newValue, row.id());
+                        }
                     }
 
-                     */
                 }
                 bPlusTree.update(row.cellFromRow(), null);
                 updatedCount++;
@@ -432,16 +389,6 @@ public class Table {
                 // Delete the row from the B+-tree
                 bPlusTree.delete(cell.cellHeader().rowId());
                 deletedCount++;
-                /*
-                // Update indexes if applicable
-                for (String columnName : indexes.keySet()) {
-                    Optional<Column> columnOpt = getColumnByName(columnName);
-                    if (columnOpt.isPresent()) {
-                        indexes.get(columnName).delete(primaryKeyValue.toString(), row.data().get(columnOpt.get()));
-                    }
-                }
-
-                 */
             }
         }
         return deletedCount;

@@ -80,4 +80,5 @@ public class Index {
         Optional<Cell> cellOptional = btree.search(key);
         return cellOptional.map(cell -> cell.cellPayload().getRowId()).orElse(-1);
     }
+
 }
