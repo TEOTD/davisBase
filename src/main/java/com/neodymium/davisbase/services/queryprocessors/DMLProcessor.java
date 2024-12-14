@@ -26,7 +26,8 @@ public class DMLProcessor {
         }
     }
 
-    private void update(String query) {
+    // Method to handle UPDATE queries
+    private void update(String query) throws IOException {
         // Split the query to separate the SET clause from the rest of the query
         String[] parts = query.split("\\s+SET\\s+", 2);
         if (parts.length < 2) {
@@ -49,8 +50,8 @@ public class DMLProcessor {
         // Create a Table object and call its update method to perform the update
         Table table = new Table(tableName, List.of());
         table.update(updateValues, condition);
-
     }
+
 
     // Method to parse the SET clause into a map of column names and values
     private Map<String, String> parseSetClause(String setDefinition) {
