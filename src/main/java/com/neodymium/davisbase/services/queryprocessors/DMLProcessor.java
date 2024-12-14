@@ -72,16 +72,29 @@ public class DMLProcessor {
         return updateValues;
     }
 
-    public void insert(String query) throws IOException {
+    public void insertIntoTable(String insertDefinition) throws IOException {
         String[] parts = insertDefinition.split("\\s+VALUES\\s+", 2);
         if (parts.length < 2) {
             throw new IllegalArgumentException("Invalid INSERT INTO syntax.");
         }
         String tableName = parts[0].trim();
         String valuesDefinition = parts[1].replace("(", "").replace(")", "").trim();
-        String[] values = valuesDefinition.split(",");
-        Table table = new Table(tableName, List.of());
-        table.insert(values);
+        String [] values = valuesDefinition.split("\\s*,\\s*");
+
+        //if columns are provided:
+        String[] columns = null;
+        if(tableName.contains("(")) && tableName.contains(")")){
+            int indexOpenParen = tableName.indexOf('(');
+            int indexCloseParen = tableName.indexOf(')');
+            if(indexOpenParen < indexCloseParen){
+                String columns_split = tableName.substring(indexOpenParen+1,indexCloseParen);
+                columns = columns_split.split("\\s*,\\s*");
+                tableName = tableName.substring(0,indexOpenParen).trim();
+            }
+
+        }
+        Table table = new Table(tableName, values);
+        table.insert(query_table.put(columns,values));
     }
 
     public void delete(String deleteDefinition) throws IOException {
@@ -94,4 +107,6 @@ public class DMLProcessor {
     public void dropTable(String tableName) throws IOException {
         Table.drop(tableName);
     }
+
+    
 }
