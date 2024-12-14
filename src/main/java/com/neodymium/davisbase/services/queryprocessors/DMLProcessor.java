@@ -46,7 +46,7 @@ public class DMLProcessor {
 
         //if columns are provided:
         String[] columns = null;
-        if(tableName.contains("(")) && tableName.contains(")")){
+        if(tableName.contains("(") && tableName.contains(")")){
             int indexOpenParen = tableName.indexOf('(');
             int indexCloseParen = tableName.indexOf(')');
             if(indexOpenParen < indexCloseParen){
@@ -57,7 +57,8 @@ public class DMLProcessor {
 
         }
         Table table = new Table(tableName, values);
-        table.insert(query_table.put(columns,values));
+        query_table.put(tableName, values);
+        table.insert(query_table);
     }
 
     public void deleteFromTable(String deleteDefinition) throws IOException {
