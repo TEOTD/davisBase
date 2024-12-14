@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static com.neodymium.davisbase.constants.Constants.DATABASE_LINE_SEPARATOR;
 import static com.neodymium.davisbase.constants.Constants.TABLE_CATALOG_NAME;
@@ -18,9 +20,10 @@ import static com.neodymium.davisbase.constants.Constants.TABLE_CATALOG_NAME;
 public class DQLProcessor {
     public void process(String query) throws IOException {
         if (query.toUpperCase().startsWith("SELECT")) {
-            select(query);
+            String selectQuery = query.substring("SELECT".length()).trim();
+            select(selectQuery);
         } else if (query.toUpperCase().startsWith("SHOW")) {
-            select("select * from " + TABLE_CATALOG_NAME);
+            select("* from " + TABLE_CATALOG_NAME);
         } else if (query.toUpperCase().startsWith("HELP")) {
             help();
         } else {
@@ -56,26 +59,31 @@ public class DQLProcessor {
             throw new IllegalArgumentException("Invalid SELECT query syntax.");
         }
 
-        String column_split = parts[0].trim();
-        String table_split = parts[1].trim();
+        String columnSplit = parts[0].trim();
+        String tableSplit = parts[1].trim();
 
-        // Parse columns to be selected (e.g., "*", or specific columns : "column1, column2")
-        List<String> columns = parseColumns(column_split);
+        List<String> columns = parseColumns(columnSplit);
 
-        // Parse the table name
-        String[] tableParts = table_split.split("WHERE", 2);
+        String[] tableParts = tableSplit.split("WHERE", 2);
         String tableName = tableParts[0].trim();
 
-        // If there's a WHERE clause, extract it
         String condition = tableParts.length > 1 ? tableParts[1].trim() : null;
-        Table table = new Table(tableName, null);
-        List<Object> records = table.select(columns, condition);
-
-        // print them to console
-        records.forEach(record -> System.out.println(record));
+        Table table = new Table(tableName, List.of());
+        List<Map<String, Object>> records = table.select(columns, condition);
+        Set<String> columnNames = records.get(0).keySet();
+        for (String columnName : columnNames) {
+            System.out.printf("%-15s", columnName);
+        }
+        System.out.println();
+        System.out.println(DATABASE_LINE_SEPARATOR);
+        for (Map<String, Object> record : records) {
+            for (String columnName : columnNames) {
+                System.out.printf("%-15s", record.get(columnName));
+            }
+            System.out.println();
+        }
     }
 
-    // Parse columns from the SELECT clause (e.g., "*", or "column1, column2")
     private List<String> parseColumns(String column_split) {
         List<String> columns = new ArrayList<>();
         if (column_split.equals("*")) {
