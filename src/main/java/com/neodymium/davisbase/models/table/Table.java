@@ -170,7 +170,6 @@ public class Table {
                 } else {
                     columnRecord.put("constraints", null);
                 }
-//                columnRecord.put("type_code", column.typeCode());
                 davisbaseColumns.insert(columnRecord);
             }
         }
