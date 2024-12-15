@@ -13,6 +13,7 @@ import java.util.Set;
 
 import static com.neodymium.davisbase.constants.Constants.DATABASE_LINE_SEPARATOR;
 import static com.neodymium.davisbase.constants.Constants.TABLE_CATALOG_NAME;
+import static com.neodymium.davisbase.utils.ConditionParser.parseCondition;
 
 @Slf4j
 @Service
@@ -68,8 +69,8 @@ public class DQLProcessor {
         String tableName = tableParts[0].trim();
 
         String condition = tableParts.length > 1 ? tableParts[1].trim() : null;
-        Table table = new Table(tableName, List.of());
-        List<Map<String, Object>> records = table.select(columns, condition);
+        Table table = new Table(tableName);
+        List<Map<String, Object>> records = table.select(columns, parseCondition(condition));
         Set<String> columnNames = records.get(0).keySet();
         for (String columnName : columnNames) {
             System.out.printf("%-15s", columnName);

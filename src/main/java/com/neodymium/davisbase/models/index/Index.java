@@ -30,7 +30,7 @@ public class Index {
             return;
         }
         btree.create();
-        Table table = new Table(tableName, null);
+        Table table = new Table(tableName);
         List<Map<String, Object>> result = table.select(List.of("rowid", columnName), null);
         List<Cell> cells = new ArrayList<>();
         for (Map<String, Object> row : result) {

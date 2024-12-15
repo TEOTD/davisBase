@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.neodymium.davisbase.utils.ConditionParser.parseCondition;
+
 
 @Slf4j
 @Service
@@ -55,7 +57,7 @@ public class DMLProcessor {
             }
 
         }
-        Table table = new Table(tableName, List.of());
+        Table table = new Table(tableName);
         List<Column> columnList = table.getColumns();
         if (values.length != columnList.size()) {
             throw new DavisBaseException("The number of values does not match the number of columns.");
@@ -72,8 +74,8 @@ public class DMLProcessor {
         String[] parts = deleteDefinition.split("(?i)\\bwhere\\b", 2);
         String tableName = parts[0].trim();
         String condition = parts.length > 1 ? parts[1].trim() : null;
-        Table table = new Table(tableName, List.of());
-        table.delete(condition);
+        Table table = new Table(tableName);
+        table.delete(parseCondition(condition));
     }
 
     public void updateTable(String updateDefinition) throws IOException {
@@ -95,7 +97,7 @@ public class DMLProcessor {
         String condition = whereParts.length > 1 ? whereParts[1].trim() : null;
 
         // Get the table object
-        Table table = new Table(tableName, List.of());
+        Table table = new Table(tableName);
 
         Map<String, Object> updatesMap = new HashMap<>();
         // Process each assignment
@@ -127,6 +129,6 @@ public class DMLProcessor {
             }
             updatesMap.put(columnName, newValue);
         }
-        table.update(condition, updatesMap);
+        table.update(parseCondition(condition), updatesMap);
     }
 }

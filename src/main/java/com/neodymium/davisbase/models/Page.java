@@ -21,7 +21,6 @@ import static com.neodymium.davisbase.constants.Constants.PAGE_SIZE;
 @Slf4j
 @RequiredArgsConstructor
 public class Page {
-    private final int pageSize;
     private final short pageNumber;
     private final PageTypes pageType;
     private final List<Short> cellOffsets = new ArrayList<>();
@@ -30,10 +29,9 @@ public class Page {
     private short parentPage;
     private short siblingPage;
     private short numberOfCells = 0;
-    private short contentAreaStartCell = Short.parseShort(String.valueOf(PAGE_SIZE));
+    private short contentAreaStartCell = PAGE_SIZE;
 
-    public Page(int pageSize, short pageNumber, PageTypes pageType, short rootPage, short parentPage, short siblingPage) {
-        this.pageSize = pageSize;
+    public Page(short pageNumber, PageTypes pageType, short rootPage, short parentPage, short siblingPage) {
         this.pageNumber = pageNumber;
         this.pageType = pageType;
         this.rootPage = rootPage;
@@ -60,20 +58,23 @@ public class Page {
         List<Cell> cells = new ArrayList<>(numberOfCells);
         for (short offset : cellOffsets) {
             buffer.position(offset);
+            byte[] remainingBuffer = new byte[buffer.remaining()];
+            buffer.get(remainingBuffer);
+
             Cell cell;
             if (PageTypes.LEAF.equals(pageType) || PageTypes.INTERIOR.equals(pageType)) {
-                cell = TableCell.deserialize(buffer.array(), pageType);
+                cell = TableCell.deserialize(remainingBuffer, pageType);
             } else {
-                cell = IndexCell.deserialize(buffer.array(), pageType);
+                cell = IndexCell.deserialize(remainingBuffer, pageType);
             }
             cells.add(cell);
         }
-
-        Page page = new Page(data.length, pageNumber, pageType, rootPage, parentPage, siblingPage);
+        Page page = new Page(pageNumber, pageType, rootPage, parentPage, siblingPage);
         page.numberOfCells = numberOfCells;
         page.contentAreaStartCell = contentAreaStartCell;
         page.cellOffsets.addAll(cellOffsets);
         page.cells.addAll(cells);
+
         return page;
     }
 
@@ -97,7 +98,6 @@ public class Page {
         if (cellOffsets.stream().anyMatch(cellOffset -> !ObjectUtils.isEmpty(cellOffset.primaryKey()))) {
             cellOffsets.sort(Comparator.comparing(CellOffset::primaryKey));
         }
-        this.cellOffsets.clear();
         for (CellOffset cellOffset : cellOffsets) {
             this.cellOffsets.add((short) cellOffset.offset());
         }
@@ -115,7 +115,7 @@ public class Page {
 
         List<Cell> newCells = new ArrayList<>();
         List<CellOffset> cellOffsets = new ArrayList<>();
-        short newContentAreaStart = (short) pageSize;
+        short newContentAreaStart = PAGE_SIZE;
 
         for (Cell existingCell : this.cells) {
             Cell cellToInsert = cells.stream()
@@ -160,7 +160,7 @@ public class Page {
     }
 
     public byte[] serialize() {
-        ByteBuffer buffer = ByteBuffer.allocate(pageSize);
+        ByteBuffer buffer = ByteBuffer.allocate(PAGE_SIZE);
         buffer.put(pageType.getValue());
         buffer.put((byte) 0x00);
         buffer.putShort(numberOfCells);
@@ -174,7 +174,8 @@ public class Page {
         }
         for (Cell cell : cells) {
             buffer.position(offsetFor(cell));
-            buffer.put(cell.serialize());
+            byte[] serializedCell = cell.serialize();
+            buffer.put(serializedCell);
         }
 
         return buffer.array();
@@ -189,7 +190,7 @@ public class Page {
         for (Cell cell : cells) {
             requiredSpace += (short) cell.serialize().length;
         }
-        return PAGE_SIZE < (16 + (2 * numberOfCells) + getCellSize(this.cells) + requiredSpace);
+        return PAGE_SIZE > (16 + (Short.BYTES * cellOffsets.size()) + getCellSize(this.cells) + requiredSpace);
     }
 
     private int getCellSize(List<Cell> cells) {
@@ -210,7 +211,7 @@ public class Page {
 
             requiredSpace += cellToInsert.serialize().length;
         }
-        return PAGE_SIZE < (16 + (2 * numberOfCells) + requiredSpace);
+        return PAGE_SIZE > (16 + (Short.BYTES * cellOffsets.size()) + requiredSpace);
     }
 
     public Optional<Cell> getCell(int rowId) {

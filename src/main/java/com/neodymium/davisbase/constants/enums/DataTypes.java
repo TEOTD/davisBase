@@ -20,7 +20,7 @@ public enum DataTypes {
     TIME(4, (byte) 4, "TIME", (byte) 0x09),
     DATETIME(8, (byte) 8, "DATETIME", (byte) 0x0A),
     DATE(8, (byte) 8, "DATE", (byte) 0x0B),
-    TEXT(0, (byte) 0, "TEXT", (byte) 0x0C);
+    TEXT(115, (byte) 115, "TEXT", (byte) 0x7F);
 
     private final int size;
     private final byte sizeInBytes;

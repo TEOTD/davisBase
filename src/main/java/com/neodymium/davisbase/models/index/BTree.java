@@ -20,7 +20,7 @@ public class BTree {
     private final RandomAccessFile indexFile;
 
     public void create() throws IOException {
-        Page rootPage = new Page(PAGE_SIZE, (short) 0, PageTypes.LEAF_INDEX,
+        Page rootPage = new Page((short) 0, PageTypes.LEAF_INDEX,
                 (short) 0, (short) 0xFFFF, (short) 0xFFFF);
         writePage(rootPage, 0);
     }
@@ -126,7 +126,7 @@ public class BTree {
 
     private void handleLeafOverflow(Page leafPage, Cell cell) throws IOException {
         int newPageId = leafPage.getPageNumber() + 1;
-        Page newLeafPage = new Page(PAGE_SIZE, (short) newPageId, PageTypes.LEAF_INDEX,
+        Page newLeafPage = new Page((short) newPageId, PageTypes.LEAF_INDEX,
                 leafPage.getRootPage(), leafPage.getParentPage(), (short) 0xFFFF);
 
         List<Cell> allCells = new ArrayList<>(leafPage.getCells());
@@ -148,7 +148,7 @@ public class BTree {
 
     private void handleInteriorOverflow(Page interiorPage, Cell cell) throws IOException {
         int newPageId = interiorPage.getPageNumber() + 1;
-        Page newInteriorPage = new Page(PAGE_SIZE, (short) newPageId, PageTypes.INTERIOR_INDEX,
+        Page newInteriorPage = new Page((short) newPageId, PageTypes.INTERIOR_INDEX,
                 interiorPage.getRootPage(), interiorPage.getParentPage(), interiorPage.getSiblingPage());
 
         List<Cell> allCells = new ArrayList<>(interiorPage.getCells());
@@ -171,7 +171,7 @@ public class BTree {
     private void handleParentPromotion(Page leftPage, Page rightPage, Cell cell) throws IOException {
         if (leftPage.getParentPage() == (short) 0xFFFF) {
             int newRootPageId = rightPage.getPageNumber() + 1;
-            Page newRootPage = new Page(PAGE_SIZE, (short) newRootPageId, PageTypes.INTERIOR_INDEX,
+            Page newRootPage = new Page((short) newRootPageId, PageTypes.INTERIOR_INDEX,
                     (short) newRootPageId, (short) 0xFFFF, rightPage.getPageNumber());
 
             newRootPage.insert(List.of(cell));

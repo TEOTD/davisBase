@@ -46,11 +46,13 @@ public class DDLProcessor {
         String columnDefinition = parts[1].replace(")", "").trim();
 
         List<Column> columns = parseColumns(columnDefinition);
-        new Table(tableName, columns);
+        Table table = new Table(tableName);
+        table.create(columns);
     }
 
     public void dropTable(String tableName) throws IOException {
-        Table.drop(tableName);
+        Table table = new Table(tableName);
+        table.drop();
     }
 
     public void createIndex(String indexDefinition) throws IOException {
@@ -64,7 +66,7 @@ public class DDLProcessor {
         String tableName = tableNameAndColumnParts[0].trim();
         String columnName = tableNameAndColumnParts[1].replace(")", "").trim();
 
-        Table table = new Table(tableName, List.of());
+        Table table = new Table(tableName);
         table.createIndex(indexName, columnName);
     }
 
@@ -72,7 +74,8 @@ public class DDLProcessor {
         String[] parts = query.split("(?i)\\bon\\b");
         String indexName = parts[0].trim();
         String tableName = parts[1].trim();
-        Table.dropIndex(indexName);
+        Table table = new Table(tableName);
+        table.dropIndex(indexName);
     }
 
     private List<Column> parseColumns(String columnDefinition) {

@@ -8,6 +8,7 @@ import com.neodymium.davisbase.models.CellPayload;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public record Row(int id, Map<Column, Object> data) {
@@ -19,10 +20,10 @@ public record Row(int id, Map<Column, Object> data) {
         return dataTypes.getSize();
     }
 
-    public static Row fromCell(Cell cell, Map<String, Column> columnSchema) {
+    public static Row fromCell(Cell cell, List<Column> columns) {
         Map<Column, Object> rowData = new HashMap<>();
         ByteBuffer buffer = ByteBuffer.wrap(cell.cellPayload().serialize());
-        for (Column column : columnSchema.values()) {
+        for (Column column : columns) {
             switch (column.typeCode()) {
                 case 0x00 -> rowData.put(column, null);
                 case 0x01, 0x08 -> rowData.put(column, buffer.get());

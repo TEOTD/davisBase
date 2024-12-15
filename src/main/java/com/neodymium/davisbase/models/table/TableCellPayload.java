@@ -28,12 +28,11 @@ public class TableCellPayload implements CellPayload {
 
         byte[] typeCodes = new byte[noOfColumns];
         for (int i = 0; i < noOfColumns; i++) {
-            if (buffer.remaining() < 1) {
-                throw new IllegalArgumentException("Invalid payloadBytes: Insufficient data for data type");
-            }
             typeCodes[i] = buffer.get();
         }
-        return new TableCellPayload(deletionFlag, noOfColumns, typeCodes, buffer.array());
+        byte[] body = new byte[buffer.remaining()];
+        buffer.get(body);
+        return new TableCellPayload(deletionFlag, noOfColumns, typeCodes, body);
     }
 
     @Override

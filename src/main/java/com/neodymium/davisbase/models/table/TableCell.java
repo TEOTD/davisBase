@@ -4,6 +4,7 @@ import com.neodymium.davisbase.constants.enums.PageTypes;
 import com.neodymium.davisbase.models.Cell;
 import com.neodymium.davisbase.models.CellHeader;
 import com.neodymium.davisbase.models.CellPayload;
+import org.springframework.util.ObjectUtils;
 
 import java.nio.ByteBuffer;
 
@@ -21,8 +22,11 @@ public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implemen
             cellHeader = TableInteriorCellHeader.deserialize(headerBytes);
         }
         byte[] payloadBytes = new byte[buffer.remaining()];
-        buffer.get(payloadBytes);
-        CellPayload cellPayload = TableCellPayload.deserialize(payloadBytes);
+        CellPayload cellPayload = null;
+        if (!ObjectUtils.isEmpty(payloadBytes)) {
+            buffer.get(payloadBytes);
+            cellPayload = TableCellPayload.deserialize(payloadBytes);
+        }
         return new TableCell(cellHeader, cellPayload);
     }
 
@@ -34,7 +38,10 @@ public record TableCell(CellHeader cellHeader, CellPayload cellPayload) implemen
     @Override
     public byte[] serialize() {
         byte[] cellHeaderBytes = cellHeader.serialize();
-        byte[] cellPayloadBytes = cellPayload.serialize();
+        byte[] cellPayloadBytes = new byte[0];
+        if (!ObjectUtils.isEmpty(cellPayload)) {
+            cellPayloadBytes = cellPayload.serialize();
+        }
         ByteBuffer buffer = ByteBuffer.allocate(cellHeaderBytes.length + cellPayloadBytes.length);
         buffer.put(cellHeaderBytes);
         buffer.put(cellPayloadBytes);

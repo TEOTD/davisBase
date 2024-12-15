@@ -22,24 +22,18 @@ public class BPlusTree {
     private final RandomAccessFile tableFile;
 
     public void create() throws IOException {
-        Page rootPage = new Page(PAGE_SIZE, (short) 0, PageTypes.LEAF,
+        Page rootPage = new Page((short) 0, PageTypes.LEAF,
                 (short) 0, (short) 0xFFFF, (short) 0xFFFF);
-        writePage(rootPage, 0);
+        writePage(rootPage);
     }
 
     public void insert(Cell cell, String primaryKey) throws IOException {
         Page rightmostPage = findRightmostLeafPage();
         try {
             rightmostPage.insert(List.of(cell), primaryKey);
-            writePage(rightmostPage, rightmostPage.getPageNumber());
+            writePage(rightmostPage);
         } catch (DavisBaseException e) {
             handleOverflow(rightmostPage, cell, primaryKey);
-        }
-    }
-
-    public void insert(Map<String, Cell> cells) throws IOException {
-        for (Map.Entry<String, Cell> cell : cells.entrySet()) {
-            insert(cell.getValue(), cell.getKey());
         }
     }
 
@@ -48,7 +42,7 @@ public class BPlusTree {
         if (existingPage.isPresent()) {
             Page page = existingPage.get();
             page.update(List.of(cell), primaryKey);
-            writePage(page, page.getPageNumber());
+            writePage(page);
         } else {
             throw new DavisBaseException("Cell not found for update.");
         }
@@ -149,7 +143,7 @@ public class BPlusTree {
         if (optionalPage.isPresent()) {
             Page page = optionalPage.get();
             page.delete(List.of(rowId));
-            writePage(page, page.getPageNumber());
+            writePage(page);
         }
     }
 
@@ -164,13 +158,13 @@ public class BPlusTree {
             Page page = loadPage((short) pageNo);
             if (PageTypes.LEAF == page.getPageType()) {
                 page.truncate();
-                writePage(page, page.getPageNumber());
+                writePage(page);
             }
         }
     }
 
-    private void writePage(Page page, int pageId) throws IOException {
-        tableFile.seek((long) pageId * PAGE_SIZE);
+    private void writePage(Page page) throws IOException {
+        tableFile.seek((long) page.getPageNumber() * PAGE_SIZE);
         tableFile.write(page.serialize());
     }
 
@@ -182,8 +176,7 @@ public class BPlusTree {
     }
 
     private Page findRootPage() throws IOException {
-        short pageNo = (short) (tableFile.length() / PAGE_SIZE);
-        Page currentPage = loadPage(pageNo);
+        Page currentPage = loadPage((short) 0);
         return loadPage(currentPage.getRootPage());
     }
 
@@ -208,47 +201,47 @@ public class BPlusTree {
 
     private void handleLeafOverflow(Page leafPage, Cell cell, String primaryKey) throws IOException {
         int newPageId = leafPage.getPageNumber() + 1;
-        Page newLeafPage = new Page(PAGE_SIZE, (short) newPageId, PageTypes.LEAF,
+        Page newLeafPage = new Page((short) newPageId, PageTypes.LEAF,
                 leafPage.getRootPage(), leafPage.getParentPage(), (short) 0xFFFF);
-        leafPage.insert(List.of(cell), primaryKey);
+        newLeafPage.insert(List.of(cell), primaryKey);
         leafPage.setSiblingPage((short) newPageId);
 
         Cell parentCell = TableCell.createParentCell(leafPage.getPageNumber(), cell.cellHeader().rowId());
+        writePage(leafPage);
+        writePage(newLeafPage);
         handleParentPromotion(leafPage, newLeafPage, parentCell);
-        writePage(leafPage, leafPage.getPageNumber());
-        writePage(newLeafPage, newPageId);
     }
 
     private void handleInteriorOverflow(Page interiorPage, Cell cell) throws IOException {
         int newPageId = interiorPage.getPageNumber() + 1;
-        Page newInteriorPage = new Page(PAGE_SIZE, (short) newPageId, PageTypes.INTERIOR,
+        Page newInteriorPage = new Page((short) newPageId, PageTypes.INTERIOR,
                 interiorPage.getRootPage(), interiorPage.getParentPage(), interiorPage.getSiblingPage());
         interiorPage.insert(List.of(cell));
         interiorPage.setSiblingPage((short) newPageId);
 
         Cell parentCell = TableCell.createParentCell(interiorPage.getPageNumber(), cell.cellHeader().rowId());
+        writePage(interiorPage);
+        writePage(newInteriorPage);
         handleParentPromotion(interiorPage, newInteriorPage, parentCell);
-        writePage(interiorPage, interiorPage.getPageNumber());
-        writePage(newInteriorPage, newPageId);
     }
 
     private void handleParentPromotion(Page leftPage, Page rightPage, Cell cell) throws IOException {
         if (leftPage.getParentPage() == (short) 0xFFFF) {
             int newRootPageId = rightPage.getPageNumber() + 1;
-            Page newRootPage = new Page(PAGE_SIZE, (short) newRootPageId, PageTypes.INTERIOR,
+            Page newRootPage = new Page((short) newRootPageId, PageTypes.INTERIOR,
                     (short) newRootPageId, (short) 0xFFFF, rightPage.getPageNumber());
 
             newRootPage.insert(List.of(cell));
             leftPage.setParentPage((short) newRootPageId);
             rightPage.setParentPage((short) newRootPageId);
-            writePage(newRootPage, newRootPageId);
+            writePage(newRootPage);
             updateAllPagesRootPageId(newRootPageId);
         } else {
             Page parentPage = loadPage(leftPage.getParentPage());
             try {
                 parentPage.insert(List.of(cell));
                 parentPage.setSiblingPage(rightPage.getPageNumber());
-                writePage(parentPage, parentPage.getPageNumber());
+                writePage(parentPage);
             } catch (DavisBaseException e) {
                 handleOverflow(parentPage, cell, null);
             }

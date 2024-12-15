@@ -33,5 +33,5 @@ public class Constants {
     public static final String INDEX_FILE_EXTENSION = ".ndx";
     public static final String TABLE_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "tables";
     public static final String INDEX_DIRECTORY = OUTPUT_DIRECTORY + File.separator + "indexes";
-    public static final Integer PAGE_SIZE = 512;
+    public static final short PAGE_SIZE = 512;
 }
